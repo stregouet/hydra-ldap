@@ -132,8 +132,6 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		ctx.Redirect(redirectURL, http.StatusFound)
 	}).Name("login_form")
 
-
-
 	m.Combo("/auth/consent").Get(func(ctx *macaron.Context, logger *log.Logger, ldapcfg *ldap.Config) {
 		challenge := ctx.Query("consent_challenge")
 		if challenge == "" {
@@ -166,6 +164,6 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 			ctx.Error(http.StatusInternalServerError, "internal server error")
 		}
 		ctx.Redirect(redirectURL, http.StatusFound)
-  }).Name("consent_form")
+	}).Name("consent_form")
 
 }

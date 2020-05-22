@@ -79,7 +79,7 @@ func AcceptLoginRequest(cfg *Config, remember bool, subject, challenge string) (
 		Subject:     subject,
 	}
 
-  resp, err := putJSON(u, data)
+	resp, err := putJSON(u, data)
 	defer resp.Body.Close()
 	if err := checkResponse(resp); err != nil {
 		return "", errors.Wrap(err, "checking response status failed")
@@ -145,7 +145,7 @@ func AcceptConsentRequest(cfg *Config, challenge string, remember bool, grantSco
 	}
 	u := cfg.ParsedUrl().ResolveReference(ref)
 
-  resp, err := putJSON(u, data)
+	resp, err := putJSON(u, data)
 	defer resp.Body.Close()
 	if err := checkResponse(resp); err != nil {
 		return "", errors.Wrap(err, "checking response status failed")
@@ -159,7 +159,6 @@ func AcceptConsentRequest(cfg *Config, challenge string, remember bool, grantSco
 	}
 	return rs.RedirectTo, nil
 }
-
 
 func checkResponse(resp *http.Response) error {
 	if resp.StatusCode >= 200 && resp.StatusCode <= 302 {

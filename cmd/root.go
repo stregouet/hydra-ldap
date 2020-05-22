@@ -13,7 +13,6 @@ import (
 	"github.com/stregouet/hydra-ldap/internal/server"
 )
 
-
 func Execute() {
 	var cfgFile string
 	RootCmd := &cobra.Command{
@@ -31,13 +30,11 @@ func Execute() {
 	}
 }
 
-
 func Run(cfgFile string) {
 	var c config.Config
 	initConfig(cfgFile, &c)
-  server.Start(&c)
+	server.Start(&c)
 }
-
 
 func initConfig(cfgFile string, c *config.Config) {
 	if cfgFile != "" {

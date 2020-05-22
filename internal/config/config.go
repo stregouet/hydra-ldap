@@ -6,9 +6,8 @@ import (
 )
 
 type Config struct {
-  Dev bool
-  Listen string
-  Hydra hydra.Config
-  Ldap ldap.Config
+	Dev    bool
+	Listen string
+	Hydra  hydra.Config
+	Ldap   ldap.Config
 }
-

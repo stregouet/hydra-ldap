@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-  "log"
+	"log"
 	"net"
 
 	"github.com/pkg/errors"
@@ -56,7 +56,6 @@ func (conn *ldapConn) searchBase(filter string, attrs []string) (*ldaplib.Search
 	return res, nil
 }
 
-
 func (conn *ldapConn) findUserDetails(username string, attrs []string) (map[string]string, error) {
 	filter := fmt.Sprintf(userFilter, username)
 	res, err := conn.searchBase(filter, nil)
@@ -71,8 +70,8 @@ func (conn *ldapConn) findUserDetails(username string, attrs []string) (map[stri
 	var entries []map[string]string
 	for _, v := range res.Entries {
 		entry := map[string]string{
-      "dn": v.DN,
-    }
+			"dn": v.DN,
+		}
 		for _, attr := range v.Attributes {
 			// We need the first value only for the named attribute.
 			entry[attr.Name] = attr.Values[0]
@@ -83,7 +82,7 @@ func (conn *ldapConn) findUserDetails(username string, attrs []string) (map[stri
 }
 
 func (conn *ldapConn) findUserDN(username string) (string, error) {
-  entry, err := conn.findUserDetails(username, []string{"dn"})
+	entry, err := conn.findUserDetails(username, []string{"dn"})
 	if err != nil {
 		return "", err
 	}
@@ -111,9 +110,7 @@ func (c *Config) IsAuthorized(ctx context.Context, username, password string) (b
 		return false, errors.Wrap(err, "trying to find user DN failed")
 	}
 
-  log.Printf("will try to bind with %s", userDN)
-
-
+	log.Printf("will try to bind with %s", userDN)
 
 	if err := conn.Bind(userDN, password); err != nil {
 		if err == errInvalidCredentials {
@@ -135,17 +132,17 @@ func (c *Config) FindOIDCClaims(ctx context.Context, subject string) (map[string
 	for ldapAttrName, _ := range c.attrsMap() {
 		attrs = append(attrs, ldapAttrName)
 	}
-  details, err := conn.findUserDetails(subject, attrs)
-  if err != nil {
-    return nil, err
-  }
-  claims := make(map[string]string)
+	details, err := conn.findUserDetails(subject, attrs)
+	if err != nil {
+		return nil, err
+	}
+	claims := make(map[string]string)
 
-  for ldapAttr, oidcAttr := range c.attrsMap() {
+	for ldapAttr, oidcAttr := range c.attrsMap() {
 		if value, ok := details[ldapAttr]; ok {
 			claims[oidcAttr] = value
 		}
-  }
+	}
 	return nil, nil
 }
 

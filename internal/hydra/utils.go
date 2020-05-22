@@ -1,12 +1,11 @@
 package hydra
 
 import (
-  "bytes"
-  "encoding/json"
-  "net/http"
-  "net/url"
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/url"
 )
-
 
 func putJSON(u *url.URL, body interface{}) (resp *http.Response, err error) {
 	var content []byte
@@ -22,5 +21,5 @@ func putJSON(u *url.URL, body interface{}) (resp *http.Response, err error) {
 	}
 	r.Header.Set("Content-Type", "application/json")
 	resp, err = http.DefaultClient.Do(r)
-  return resp, err
+	return resp, err
 }
