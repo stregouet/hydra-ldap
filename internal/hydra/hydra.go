@@ -36,39 +36,17 @@ type HydraResp struct {
 }
 
 func GetLoginRequest(cfg *Config, challenge string) (*HydraResp, error) {
-	ref, err := url.Parse(fmt.Sprintf("oauth2/auth/requests/login?login_challenge=%s", challenge))
-	if err != nil {
-		return nil, err
-	}
-	u := cfg.ParsedUrl().ResolveReference(ref)
-	resp, err := http.Get(u.String())
-
-	if err != nil {
-		return nil, errors.Wrap(err, "http request to hydra failed")
-	}
-	if err = checkResponse(resp); err != nil {
-		return nil, errors.Wrap(err, "hydra reply with error")
-	}
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, errors.Wrap(err, "read of response body failed")
-	}
-	var hr HydraResp
-	if err := json.Unmarshal(data, &hr); err != nil {
-		return nil, errors.Wrap(err, "parsing response body as json failed")
-	}
-	return &hr, nil
+  resp, err := getXRequest(cfg, fmt.Sprintf("oauth2/auth/requests/login?login_challenge=%s", challenge))
+  if err != nil {
+    return nil, err
+  }
+  return resp, nil
 }
 
 func AcceptLoginRequest(cfg *Config, remember bool, subject, challenge string) (string, error) {
 	if challenge == "" {
 		return "", ErrChallengeMissed
 	}
-	ref, err := url.Parse(fmt.Sprintf("oauth2/auth/requests/login/accept?login_challenge=%s", challenge))
-	if err != nil {
-		return "", errors.Wrap(err, "parsing url failed")
-	}
-	u := cfg.ParsedUrl().ResolveReference(ref)
 	data := struct {
 		Remember    bool   `json:"remember"`
 		RememberFor int    `json:"remember_for"`
@@ -78,45 +56,19 @@ func AcceptLoginRequest(cfg *Config, remember bool, subject, challenge string) (
 		RememberFor: cfg.RememberFor(),
 		Subject:     subject,
 	}
-
-	resp, err := putJSON(u, data)
-	defer resp.Body.Close()
-	if err := checkResponse(resp); err != nil {
-		return "", errors.Wrap(err, "checking response status failed")
-	}
-	var rs struct {
-		RedirectTo string `json:"redirect_to"`
-	}
-	dec := json.NewDecoder(resp.Body)
-	if err := dec.Decode(&rs); err != nil {
-		return "", errors.Wrap(err, "parse of response body failed")
-	}
-	return rs.RedirectTo, nil
+  redirectURL, err := acceptXRequest(cfg, fmt.Sprintf("oauth2/auth/requests/login/accept?login_challenge=%s", challenge), data)
+  if err != nil {
+    return "", err
+  }
+  return redirectURL, nil
 }
 
 func GetConsentRequest(cfg *Config, challenge string) (*HydraResp, error) {
-	ref, err := url.Parse(fmt.Sprintf("oauth2/auth/requests/consent?consent_challenge=%s", challenge))
-	if err != nil {
-		return nil, err
-	}
-	u := cfg.ParsedUrl().ResolveReference(ref)
-	resp, err := http.Get(u.String())
-
-	if err != nil {
-		return nil, errors.Wrap(err, "http request to hydra failed")
-	}
-	if err = checkResponse(resp); err != nil {
-		return nil, errors.Wrap(err, "hydra reply with error")
-	}
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, errors.Wrap(err, "read of response body failed")
-	}
-	var hr HydraResp
-	if err := json.Unmarshal(data, &hr); err != nil {
-		return nil, errors.Wrap(err, "parsing response body as json failed")
-	}
-	return &hr, nil
+  resp, err := getXRequest(cfg, fmt.Sprintf("oauth2/auth/requests/consent?consent_challenge=%s", challenge))
+  if err != nil {
+    return nil, err
+  }
+  return resp, nil
 }
 
 func AcceptConsentRequest(cfg *Config, challenge string, remember bool, grantScope []string, claims interface{}) (string, error) {
@@ -139,25 +91,11 @@ func AcceptConsentRequest(cfg *Config, challenge string, remember bool, grantSco
 	if challenge == "" {
 		return "", ErrChallengeMissed
 	}
-	ref, err := url.Parse(fmt.Sprintf("oauth2/auth/requests/consent/accept?consent_challenge=%s", challenge))
-	if err != nil {
-		return "", errors.Wrap(err, "parsing url failed")
-	}
-	u := cfg.ParsedUrl().ResolveReference(ref)
-
-	resp, err := putJSON(u, data)
-	defer resp.Body.Close()
-	if err := checkResponse(resp); err != nil {
-		return "", errors.Wrap(err, "checking response status failed")
-	}
-	var rs struct {
-		RedirectTo string `json:"redirect_to"`
-	}
-	dec := json.NewDecoder(resp.Body)
-	if err := dec.Decode(&rs); err != nil {
-		return "", errors.Wrap(err, "parse of response body failed")
-	}
-	return rs.RedirectTo, nil
+  redirectURL, err := acceptXRequest(cfg, fmt.Sprintf("oauth2/auth/requests/consent/accept?consent_challenge=%s", challenge), data)
+  if err != nil {
+    return "", err
+  }
+  return redirectURL, nil
 }
 
 func checkResponse(resp *http.Response) error {
