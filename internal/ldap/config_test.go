@@ -1,8 +1,9 @@
 package ldap
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestAttrsMap(t *testing.T) {
@@ -14,7 +15,5 @@ func TestAttrsMap(t *testing.T) {
 		"name": "name",
 		"sn":   "family_name",
 	}
-	if !reflect.DeepEqual(result, expected) {
-		t.Errorf("got %#v, expecting %#v", result, expected)
-	}
+	assert.Equal(t, expected, result)
 }

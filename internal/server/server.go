@@ -127,6 +127,7 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 			ctx.Data["error"] = true
 			ctx.Data["msg"] = err.Error()
 			ctx.HTML(http.StatusInternalServerError, "login")
+			return
 		}
 
 		ctx.Redirect(redirectURL, http.StatusFound)

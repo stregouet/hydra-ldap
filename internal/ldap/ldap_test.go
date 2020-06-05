@@ -1,105 +1,171 @@
 package ldap
 
 import (
-  "context"
-	"crypto/tls"
+	"errors"
 	"fmt"
+	"sort"
 	"testing"
-	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-  "github.com/stretchr/testify/assert"
 	ldaplib "gopkg.in/ldap.v2"
 )
 
-func TestFindUserDN(t *testing.T) {
-	c := Config{}
-	moq := new(fakeClient)
-	conn := ldapConn{
-		Client: moq,
-		Config: &c,
-	}
-
-	moq.On("Search",
-    conn.makeSearchRequest(fmt.Sprintf(userFilter, "toto"), nil),
-	).Return(
-		&ldaplib.SearchResult{
-			// Entries: make([]*ldaplib.Entry, 0),
-			Entries: []*ldaplib.Entry{
-        &ldaplib.Entry{
-          DN: "titi",
-        },
-      },
-		},
-		nil,
-	)
-
-	got, err := conn.findUserDN("toto")
-	if err != nil {
-		t.Errorf("unexpected error %#v", err)
-    return
-	}
-  assert.Equal(t, "uid=toto,dc=example,dc.com", got)
-}
-
-
+// test
+//  utilisateur non trouvé
+//  utilisateur trouvé mais error de mot de passe
+//  utilisateur trouvé et bon mot de passe
 func TestIsAuthorized(t *testing.T) {
-  moq := new(fakeMyClient)
-  result, err := isAuthorized(context.Background(), moq, "toto", "titi")
+	var (
+		username = "titi"
+		dn       = "uid=titi,ou=users,dc=example,dc=com"
+		password = "secret"
+	)
+	t.Run("invalid credential", func(t *testing.T) {
+		moq := new(fakeClient)
+		moq.On("searchBase",
+			fmt.Sprintf(userFilter, username),
+			make([]string, 0),
+		).Return(
+			&ldaplib.SearchResult{
+				Entries: []*ldaplib.Entry{
+					&ldaplib.Entry{
+						DN: dn,
+					},
+				},
+			},
+			nil,
+		)
 
+		moq.On("bind",
+			dn,
+			password,
+		).Return(
+			ldaplib.NewError(ldaplib.LDAPResultInvalidCredentials, errors.New("oups")),
+		)
+
+		got, err := isAuthorized(moq, username, password)
+		if assert.Error(t, err) {
+			assert.Equal(t, errInvalidCredentials, err)
+		}
+		assert.False(t, got)
+	})
+
+	t.Run("user not found", func(t *testing.T) {
+		moq := new(fakeClient)
+		moq.On("searchBase",
+			fmt.Sprintf(userFilter, username),
+			make([]string, 0),
+		).Return(
+			&ldaplib.SearchResult{
+				Entries: make([]*ldaplib.Entry, 0),
+			},
+			nil,
+		)
+
+		got, err := isAuthorized(moq, username, password)
+		if assert.Error(t, err) {
+			assert.Equal(t, errUserNotFound, err)
+		}
+		assert.False(t, got)
+	})
+
+	t.Run("everything ok", func(t *testing.T) {
+		moq := new(fakeClient)
+		moq.On("searchBase",
+			fmt.Sprintf(userFilter, username),
+			make([]string, 0),
+		).Return(
+			&ldaplib.SearchResult{
+				Entries: []*ldaplib.Entry{
+					&ldaplib.Entry{
+						DN: dn,
+					},
+				},
+			},
+			nil,
+		)
+		moq.On("bind",
+			dn,
+			password,
+		).Return(nil)
+
+		got, err := isAuthorized(moq, username, password)
+		assert.NoError(t, err)
+		assert.True(t, got)
+	})
 }
 
+func TestOIDCClaims(t *testing.T) {
+	var (
+		username = "titi"
+		dn       = "uid=titi,ou=users,dc=example,dc=com"
+	)
+	cfg := Config{
+		Attrs: []string{"name:name", "sn:family_name"},
+	}
+	t.Run("user not found", func(t *testing.T) {
+		moq := new(fakeClient)
+		moq.On("searchBase",
+			fmt.Sprintf(userFilter, username),
+			[]string{"name", "sn"},
+		).Return(
+			&ldaplib.SearchResult{
+				Entries: make([]*ldaplib.Entry, 0),
+			},
+			nil,
+		)
+		_, err := cfg.findOIDCClaims(moq, username)
+		assert.Equal(t, errUserNotFound, err)
+	})
 
-type fakeMyClient struct {
-  mock.Mock
-}
-
-func (c *fakeMyClient) Init(cfg *Config) error {
-  return nil
-}
-func (c *fakeMyClient) OpenConn(ctx context.Context) error {
-  return nil
-}
-func (c *fakeMyClient) searchBase(filter string, attrs []string) (*ldaplib.SearchResult, error) {
-	args := c.Called(filter, attrs)
-	return args.Get(0).(*ldaplib.SearchResult), args.Error(1)
+	t.Run("everything ok", func(t *testing.T) {
+		moq := new(fakeClient)
+		moq.On("searchBase",
+			fmt.Sprintf(userFilter, username),
+			[]string{"name", "sn"},
+		).Return(
+			&ldaplib.SearchResult{
+				Entries: []*ldaplib.Entry{
+					&ldaplib.Entry{
+						DN: dn,
+						Attributes: []*ldaplib.EntryAttribute{
+							&ldaplib.EntryAttribute{
+								Name:   "name",
+								Values: []string{"Titi"},
+							},
+							&ldaplib.EntryAttribute{
+								Name:   "sn",
+								Values: []string{"Titi Dupont"},
+							},
+						},
+					},
+				},
+			},
+			nil,
+		)
+		claims, err := cfg.findOIDCClaims(moq, username)
+		assert.NoError(t, err)
+		expected := map[string]string{
+			"name":        "Titi",
+			"family_name": "Titi Dupont",
+		}
+		assert.Equal(t, expected, claims)
+	})
 }
 
 type fakeClient struct {
 	mock.Mock
 }
 
-func (c *fakeClient) Start() {}
-func (c *fakeClient) Close() {}
-func (c *fakeClient) StartTLS(config *tls.Config) error {
-	return nil
-}
-func (c *fakeClient) SetTimeout(time.Duration) {}
-func (c *fakeClient) Bind(username, password string) error {
-	return nil
-}
-func (c *fakeClient) SimpleBind(simpleBindRequest *ldaplib.SimpleBindRequest) (*ldaplib.SimpleBindResult, error) {
-	return nil, nil
-}
-func (c *fakeClient) Add(addRequest *ldaplib.AddRequest) error {
-	return nil
-}
-func (c *fakeClient) Del(delRequest *ldaplib.DelRequest) error {
-	return nil
-}
-func (c *fakeClient) Modify(modifyRequest *ldaplib.ModifyRequest) error {
-	return nil
-}
-func (c *fakeClient) Compare(dn, attribute, value string) (bool, error) {
-	return false, nil
-}
-func (c *fakeClient) PasswordModify(passwordModifyRequest *ldaplib.PasswordModifyRequest) (*ldaplib.PasswordModifyResult, error) {
-	return nil, nil
-}
-func (c *fakeClient) Search(searchRequest *ldaplib.SearchRequest) (*ldaplib.SearchResult, error) {
-	args := c.Called(searchRequest)
+func (c *fakeClient) searchBase(filter string, attrs []string) (*ldaplib.SearchResult, error) {
+	if attrs != nil {
+		sort.Strings(attrs)
+	}
+	args := c.Called(filter, attrs)
 	return args.Get(0).(*ldaplib.SearchResult), args.Error(1)
 }
-func (c *fakeClient) SearchWithPaging(searchRequest *ldaplib.SearchRequest, pagingSize uint32) (*ldaplib.SearchResult, error) {
-	return nil, nil
+func (c *fakeClient) bind(bindDN, password string) error {
+	args := c.Called(bindDN, password)
+	return args.Error(0)
 }
