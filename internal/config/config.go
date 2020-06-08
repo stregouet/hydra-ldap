@@ -11,3 +11,14 @@ type Config struct {
 	Hydra  hydra.Config
 	Ldap   ldap.Config
 }
+
+
+func (cfg *Config) Validate() error {
+  if err := cfg.Hydra.Validate(); err != nil {
+    return err
+  }
+  if err := cfg.Ldap.Validate(); err != nil {
+    return err
+  }
+  return nil
+}

@@ -1,6 +1,7 @@
 package hydra
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -24,12 +25,13 @@ func (c *Config) RememberFor() int {
 	return int(c.SessionTTL.Seconds())
 }
 
-func EnsureConf(c *Config) {
+func (c *Config) Validate() error {
 	if c.Url == "" {
-		panic("empty hydra url")
+		return fmt.Errorf("empty hydra url")
 	}
 	if !strings.HasSuffix(c.Url, "/") {
 		c.Url += "/"
 	}
 	c.ParsedUrl()
+	return nil
 }

@@ -26,3 +26,7 @@ func (c *Config) attrsMap() map[string]string {
 	}
 	return result
 }
+
+func (cfg *Config) Validate() error {
+	return nil
+}

@@ -33,6 +33,9 @@ func Execute() {
 func Run(cfgFile string) {
 	var c config.Config
 	initConfig(cfgFile, &c)
+  if err := c.Validate(); err != nil {
+    panic(fmt.Sprintf("error in config %v", err))
+  }
 	server.Start(&c)
 }
 
