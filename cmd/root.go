@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/stregouet/hydra-ldap/internal/config"
+	"github.com/stregouet/hydra-ldap/internal/logging"
 	"github.com/stregouet/hydra-ldap/internal/server"
 )
 
@@ -33,9 +34,10 @@ func Execute() {
 func Run(cfgFile string) {
 	var c config.Config
 	initConfig(cfgFile, &c)
-  if err := c.Validate(); err != nil {
-    panic(fmt.Sprintf("error in config %v", err))
-  }
+	if err := c.Validate(); err != nil {
+		panic(fmt.Sprintf("error in config %v", err))
+	}
+	logging.Setup(&c.Log, c.Dev)
 	server.Start(&c)
 }
 

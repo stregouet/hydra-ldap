@@ -1,9 +1,7 @@
 package server
 
 import (
-	"io"
 	"log"
-	"log/syslog"
 	"net/http"
 	"os"
 
@@ -15,37 +13,27 @@ import (
 	"github.com/stregouet/hydra-ldap/internal/config"
 	"github.com/stregouet/hydra-ldap/internal/hydra"
 	"github.com/stregouet/hydra-ldap/internal/ldap"
+	"github.com/stregouet/hydra-ldap/internal/logging"
 )
 
 func Start(cfg *config.Config) {
 	macaronEnv := ""
 	if !cfg.Dev {
 		macaronEnv = "production"
+		macaron.Env = macaronEnv
 	}
 	os.Setenv("MACARON_ENV", macaronEnv)
-	m := macaron.NewWithLogger(createLogger(cfg))
+	m := macaron.NewWithLogger(logging.Logger.With().Str("component", "macaron").Logger())
+	logging.Info().Str("propname", "value").Msg("yo !")
 
-	log.Printf("type m %#v", m)
 	setupMiddlewares(m)
 	setupRoutes(m, cfg)
 	m.Map(&cfg.Ldap)
 	m.Run()
 }
 
-func createLogger(cfg *config.Config) io.Writer {
-	writers := []io.Writer{os.Stdout}
-	if !cfg.Dev {
-		syslogout, err := syslog.New(syslog.LOG_WARNING|syslog.LOG_DAEMON, "")
-		if err != nil {
-			log.Fatalf("unable to create syslog connection, %v", err)
-		}
-		writers = append(writers, syslogout)
-	}
-	return io.MultiWriter(writers...)
-}
-
 func setupMiddlewares(m *macaron.Macaron) {
-	m.Use(macaron.Logger())
+	m.Use(zerologMiddleware)
 	m.Use(macaron.Recovery())
 	m.Use(macaron.Static("public"))
 	m.Use(macaron.Renderer())
@@ -55,6 +43,7 @@ func setupMiddlewares(m *macaron.Macaron) {
 
 func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 	m.Combo("/auth/login").Get(func(ctx *macaron.Context, x csrf.CSRF, logger *log.Logger) {
+		l := fromReq(ctx)
 		challenge := ctx.Query("login_challenge")
 		if challenge == "" {
 			ctx.Error(http.StatusBadRequest, "missing login challenge")
@@ -65,7 +54,8 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		case nil:
 			break
 		case hydra.ErrChallengeNotFound:
-			logger.Printf("DEBUG Unknown login challenge in the OAuth2 provider %v (challenge: %q)", err, challenge)
+			// logger.Printf("DEBUG Unknown login challenge in the OAuth2 provider %v (challenge: %q)", err, challenge)
+			l.Error().Err(err).Str("challenge", challenge).Msg("Unknown login challenge in the OAuth2 provider ")
 			ctx.Error(http.StatusBadRequest, "unknown login challenge")
 			return
 		case hydra.ErrChallengeExpired:
