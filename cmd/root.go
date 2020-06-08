@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -54,6 +53,6 @@ func initConfig(cfgFile string, c *config.Config) {
 
 	err := viper.Unmarshal(&c)
 	if err != nil {
-		log.Fatalf("unable to decode into struct, %v", err)
+		panic(fmt.Sprintf("unable to decode into struct, %v", err))
 	}
 }

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"log"
 	"net/http"
 	"os"
 
@@ -42,10 +41,11 @@ func setupMiddlewares(m *macaron.Macaron) {
 }
 
 func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
-	m.Combo("/auth/login").Get(func(ctx *macaron.Context, x csrf.CSRF, logger *log.Logger) {
+	m.Combo("/auth/login").Get(func(ctx *macaron.Context, x csrf.CSRF) {
 		l := fromReq(ctx)
 		challenge := ctx.Query("login_challenge")
 		if challenge == "" {
+			l.Info().Msg("missing login challenge")
 			ctx.Error(http.StatusBadRequest, "missing login challenge")
 			return
 		}
@@ -54,16 +54,15 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		case nil:
 			break
 		case hydra.ErrChallengeNotFound:
-			// logger.Printf("DEBUG Unknown login challenge in the OAuth2 provider %v (challenge: %q)", err, challenge)
 			l.Error().Err(err).Str("challenge", challenge).Msg("Unknown login challenge in the OAuth2 provider ")
 			ctx.Error(http.StatusBadRequest, "unknown login challenge")
 			return
 		case hydra.ErrChallengeExpired:
-			logger.Printf("DEBUG Login challenge has been used already in the OAuth2 provider %v (challenge: %q)", err, challenge)
+			l.Info().Err(err).Str("challenge", challenge).Msg("Login challenge has been used already in the OAuth2 provider")
 			ctx.Error(http.StatusBadRequest, "Login challenge has been used already")
 			return
 		default:
-			logger.Printf("DEBUG Failed to initiate an OAuth2 login request %v (challenge: %q)", err, challenge)
+			l.Error().Err(err).Str("challenge", challenge).Msg("Failed to initiate an OAuth2 login request")
 			ctx.Error(http.StatusInternalServerError, "internal server error")
 			return
 		}
@@ -76,7 +75,8 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		ctx.Data["client_id"] = resp.Client.Id
 		ctx.Data["client_name"] = resp.Client.Name
 		ctx.HTML(200, "login")
-	}).Post(csrf.Validate, func(ctx *macaron.Context, x csrf.CSRF, logger *log.Logger, ldapcfg *ldap.Config) {
+	}).Post(csrf.Validate, func(ctx *macaron.Context, x csrf.CSRF, ldapcfg *ldap.Config) {
+		l := fromReq(ctx)
 		challenge := ctx.Query("challenge")
 		username := ctx.Query("username")
 		password := ctx.Query("password")
@@ -84,8 +84,8 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		clientName := ctx.Query("client_name")
 
 		if challenge == "" {
-			logger.Printf("No login challenge that is needed by the OAuth2 provider")
-			ctx.Error(http.StatusBadRequest, "unknown login challenge")
+			l.Info().Msg("missing login challenge")
+			ctx.Error(http.StatusBadRequest, "missing login challenge")
 			return
 		}
 
@@ -98,12 +98,12 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 
 		switch ok, err := ldapcfg.IsAuthorized(ctx.Req.Context(), username, password); {
 		case err != nil:
-			logger.Printf("DEBUG error trying to authentificate %v (challenge: %q)", err, challenge)
+			l.Error().Str("challenge", challenge).Err(err).Msg("error trying to authentificate")
 			ctx.Data["error"] = true
 			ctx.Data["msg"] = err.Error()
 			ctx.HTML(http.StatusInternalServerError, "login")
 		case !ok:
-			logger.Printf("DEBUG unable to authentificate (challenge: %q)", challenge)
+			l.Debug().Str("challenge", challenge).Msg("unable to authentificate")
 			ctx.Data["error"] = true
 			ctx.Data["msg"] = "bad username or password"
 			ctx.HTML(http.StatusUnauthorized, "login")
@@ -113,7 +113,7 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		// XXX `subject` parameter could be either email or uid is this a problem?
 		redirectURL, err := hydra.AcceptLoginRequest(&cfg.Hydra, remember, username, challenge)
 		if err != nil {
-			logger.Printf("DEBUG error making accept login request against hydra %v (challenge: %q)", err, challenge)
+			l.Error().Str("challenge", challenge).Err(err).Msg("error making accept login request against hydra ")
 			ctx.Data["error"] = true
 			ctx.Data["msg"] = err.Error()
 			ctx.HTML(http.StatusInternalServerError, "login")
@@ -123,11 +123,12 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		ctx.Redirect(redirectURL, http.StatusFound)
 	}).Name("login_form")
 
-	m.Combo("/auth/consent").Get(func(ctx *macaron.Context, logger *log.Logger, ldapcfg *ldap.Config) {
+	m.Combo("/auth/consent").Get(func(ctx *macaron.Context, ldapcfg *ldap.Config) {
+		l := fromReq(ctx)
 		challenge := ctx.Query("consent_challenge")
 		if challenge == "" {
-			logger.Printf("No consent challenge that is needed by the OAuth2 provider")
-			ctx.Error(http.StatusBadRequest, "unknown consent challenge")
+			l.Info().Msg("missing consent challenge")
+			ctx.Error(http.StatusBadRequest, "missing consent challenge")
 			return
 		}
 
@@ -136,22 +137,22 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		case nil:
 			break
 		case hydra.ErrChallengeNotFound:
-			logger.Printf("DEBUG Unknown login challenge in the OAuth2 provider %v (challenge: %q)", err, challenge)
+			l.Error().Err(err).Str("challenge", challenge).Msg("Unknown consent challenge in the OAuth2 provider ")
 			ctx.Error(http.StatusBadRequest, "unknown login challenge")
 			return
 		case hydra.ErrChallengeExpired:
-			logger.Printf("DEBUG Login challenge has been used already in the OAuth2 provider %v (challenge: %q)", err, challenge)
+			l.Info().Err(err).Str("challenge", challenge).Msg("Consent challenge has been used already in the OAuth2 provider")
 			ctx.Error(http.StatusBadRequest, "Login challenge has been used already")
 			return
 		default:
-			logger.Printf("DEBUG Failed to initiate an OAuth2 login request %v (challenge: %q)", err, challenge)
+			l.Error().Err(err).Str("challenge", challenge).Msg("Failed to initiate an OAuth2 consent request")
 			ctx.Error(http.StatusInternalServerError, "internal server error")
 			return
 		}
 		claims, err := ldapcfg.FindOIDCClaims(ctx.Req.Context(), resp.Subject)
 		redirectURL, err := hydra.AcceptConsentRequest(&cfg.Hydra, challenge, !resp.Skip, resp.RequestedScopes, claims)
 		if err != nil {
-			logger.Printf("DEBUG error making accept consent request against hydra %v (challenge: %q)", err, challenge)
+			l.Error().Str("challenge", challenge).Err(err).Msg("error making accept consent request against hydra ")
 			ctx.Error(http.StatusInternalServerError, "internal server error")
 		}
 		ctx.Redirect(redirectURL, http.StatusFound)
