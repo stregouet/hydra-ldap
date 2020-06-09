@@ -74,6 +74,7 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 				ctx.Error(http.StatusInternalServerError, "internal server error")
 				return
 			} else {
+				l.Info().Str("challenge", challenge).Msg("login UI was skipped")
 				ctx.Redirect(redirectURL, http.StatusFound)
 				return
 			}
@@ -120,7 +121,7 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 			ctx.HTML(http.StatusUnauthorized, "login")
 			return
 		}
-		remember := ctx.Query("remember") != ""
+		remember := ctx.Query("rememberme") != ""
 		// XXX `subject` parameter could be either email or uid is this a problem?
 		redirectURL, err := hydra.AcceptLoginRequest(
 			ctx.Req.Context(),
