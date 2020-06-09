@@ -66,7 +66,18 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 			ctx.Error(http.StatusInternalServerError, "internal server error")
 			return
 		}
-		// TODO if resp.Skip
+
+		if resp.Skip {
+			redirectURL, err := hydra.AcceptLoginRequest(&cfg.Hydra, false, resp.Subject, challenge)
+			if err != nil {
+				l.Error().Str("challenge", challenge).Err(err).Msg("error making accept login request against hydra ")
+				ctx.Error(http.StatusInternalServerError, "internal server error")
+				return
+			} else {
+				ctx.Redirect(redirectURL, http.StatusFound)
+				return
+			}
+		}
 
 		ctx.Data["Title"] = "login-sso"
 		ctx.Data["csrf_token"] = x.GetToken()
