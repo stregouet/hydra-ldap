@@ -2,6 +2,7 @@ package hydra
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,21 +47,32 @@ type reqInfo struct {
 
 type httpClient struct {
 	cfg *Config
+	ctx context.Context
 }
 
 type httpClientInterface interface {
 	putJSON(u *url.URL, body io.Reader) (*http.Response, error)
 	get(u *url.URL) (*http.Response, error)
+	getContext() context.Context
+}
+
+func (client *httpClient) getContext() context.Context {
+	return client.ctx
 }
 
 func (client *httpClient) get(u *url.URL) (*http.Response, error) {
 	fullUrl := client.cfg.ParsedUrl().ResolveReference(u)
-	return http.Get(fullUrl.String())
+	r, err := http.NewRequestWithContext(client.getContext(), http.MethodGet, fullUrl.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return http.DefaultClient.Do(r)
 }
 
 func (client *httpClient) putJSON(u *url.URL, body io.Reader) (*http.Response, error) {
 	fullUrl := client.cfg.ParsedUrl().ResolveReference(u)
-	r, err := http.NewRequest(http.MethodPut, fullUrl.String(), body)
+	r, err := http.NewRequestWithContext(client.getContext(), http.MethodPut, fullUrl.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -106,9 +118,9 @@ func call(c httpClientInterface, info *reqInfo, jsonReq interface{}, jsonResp in
 	return nil
 }
 
-func getRequest(cfg *Config, info *reqInfo) (*HydraResp, error) {
+func getRequest(ctx context.Context, cfg *Config, info *reqInfo) (*HydraResp, error) {
 	var hr HydraResp
-	client := &httpClient{cfg}
+	client := &httpClient{cfg, ctx}
 	info.reqVerb = GET_VERB
 	if err := call(client, info, nil, &hr); err != nil {
 		return nil, err
@@ -116,11 +128,11 @@ func getRequest(cfg *Config, info *reqInfo) (*HydraResp, error) {
 	return &hr, nil
 }
 
-func acceptRequest(cfg *Config, info *reqInfo, data interface{}) (string, error) {
+func acceptRequest(ctx context.Context, cfg *Config, info *reqInfo, data interface{}) (string, error) {
 	var rs struct {
 		RedirectTo string `json:"redirect_to"`
 	}
-	client := &httpClient{cfg}
+	client := &httpClient{cfg, ctx}
 	info.reqVerb = ACCEPT_VERB
 	if err := call(client, info, data, &rs); err != nil {
 		return "", err

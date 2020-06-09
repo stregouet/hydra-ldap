@@ -1,6 +1,8 @@
 package hydra
 
 import (
+	"context"
+
 	"github.com/pkg/errors"
 )
 
@@ -15,15 +17,15 @@ var (
 	ErrChallengeExpired = errors.New("challenge expired")
 )
 
-func GetLoginRequest(cfg *Config, challenge string) (*HydraResp, error) {
-	resp, err := getRequest(cfg, &reqInfo{reqType: LOGIN_REQ, challenge: challenge})
+func GetLoginRequest(ctx context.Context, cfg *Config, challenge string) (*HydraResp, error) {
+	resp, err := getRequest(ctx, cfg, &reqInfo{reqType: LOGIN_REQ, challenge: challenge})
 	if err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
-func AcceptLoginRequest(cfg *Config, remember bool, subject, challenge string) (string, error) {
+func AcceptLoginRequest(ctx context.Context, cfg *Config, remember bool, subject, challenge string) (string, error) {
 	if challenge == "" {
 		return "", ErrChallengeMissed
 	}
@@ -36,22 +38,22 @@ func AcceptLoginRequest(cfg *Config, remember bool, subject, challenge string) (
 		RememberFor: cfg.RememberFor(),
 		Subject:     subject,
 	}
-	redirectURL, err := acceptRequest(cfg, &reqInfo{reqType: LOGIN_REQ, challenge: challenge}, data)
+	redirectURL, err := acceptRequest(ctx, cfg, &reqInfo{reqType: LOGIN_REQ, challenge: challenge}, data)
 	if err != nil {
 		return "", err
 	}
 	return redirectURL, nil
 }
 
-func GetConsentRequest(cfg *Config, challenge string) (*HydraResp, error) {
-	resp, err := getRequest(cfg, &reqInfo{reqType: CONSENT_REQ, challenge: challenge})
+func GetConsentRequest(ctx context.Context, cfg *Config, challenge string) (*HydraResp, error) {
+	resp, err := getRequest(ctx, cfg, &reqInfo{reqType: CONSENT_REQ, challenge: challenge})
 	if err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
-func AcceptConsentRequest(cfg *Config, challenge string, remember bool, grantScope []string, claims interface{}) (string, error) {
+func AcceptConsentRequest(ctx context.Context, cfg *Config, challenge string, remember bool, grantScope []string, claims interface{}) (string, error) {
 	type session struct {
 		IDToken interface{} `json:"id_token,omitempty"`
 	}
@@ -71,7 +73,7 @@ func AcceptConsentRequest(cfg *Config, challenge string, remember bool, grantSco
 	if challenge == "" {
 		return "", ErrChallengeMissed
 	}
-	redirectURL, err := acceptRequest(cfg, &reqInfo{reqType: CONSENT_REQ, challenge: challenge}, data)
+	redirectURL, err := acceptRequest(ctx, cfg, &reqInfo{reqType: CONSENT_REQ, challenge: challenge}, data)
 	if err != nil {
 		return "", err
 	}

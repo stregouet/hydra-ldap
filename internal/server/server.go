@@ -49,7 +49,7 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 			ctx.Error(http.StatusBadRequest, "missing login challenge")
 			return
 		}
-		resp, err := hydra.GetLoginRequest(&cfg.Hydra, challenge)
+		resp, err := hydra.GetLoginRequest(ctx.Req.Context(), &cfg.Hydra, challenge)
 		switch errors.Cause(err) {
 		case nil:
 			break
@@ -68,7 +68,7 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		}
 
 		if resp.Skip {
-			redirectURL, err := hydra.AcceptLoginRequest(&cfg.Hydra, false, resp.Subject, challenge)
+			redirectURL, err := hydra.AcceptLoginRequest(ctx.Req.Context(), &cfg.Hydra, false, resp.Subject, challenge)
 			if err != nil {
 				l.Error().Str("challenge", challenge).Err(err).Msg("error making accept login request against hydra ")
 				ctx.Error(http.StatusInternalServerError, "internal server error")
@@ -122,7 +122,13 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		}
 		remember := ctx.Query("remember") != ""
 		// XXX `subject` parameter could be either email or uid is this a problem?
-		redirectURL, err := hydra.AcceptLoginRequest(&cfg.Hydra, remember, username, challenge)
+		redirectURL, err := hydra.AcceptLoginRequest(
+			ctx.Req.Context(),
+			&cfg.Hydra,
+			remember,
+			username,
+			challenge,
+		)
 		if err != nil {
 			l.Error().Str("challenge", challenge).Err(err).Msg("error making accept login request against hydra ")
 			ctx.Data["error"] = true
@@ -143,26 +149,36 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 			return
 		}
 
-		resp, err := hydra.GetConsentRequest(&cfg.Hydra, challenge)
+		resp, err := hydra.GetConsentRequest(ctx.Req.Context(), &cfg.Hydra, challenge)
 		switch errors.Cause(err) {
 		case nil:
 			break
 		case hydra.ErrChallengeNotFound:
-			l.Error().Err(err).Str("challenge", challenge).Msg("Unknown consent challenge in the OAuth2 provider ")
+			l.Error().Err(err).Str("challenge", challenge).
+				Msg("Unknown consent challenge in the OAuth2 provider ")
 			ctx.Error(http.StatusBadRequest, "unknown login challenge")
 			return
 		case hydra.ErrChallengeExpired:
-			l.Info().Err(err).Str("challenge", challenge).Msg("Consent challenge has been used already in the OAuth2 provider")
+			l.Info().Err(err).Str("challenge", challenge).
+				Msg("Consent challenge has been used already in the OAuth2 provider")
 			ctx.Error(http.StatusBadRequest, "Login challenge has been used already")
 			return
 		default:
-			l.Error().Err(err).Str("challenge", challenge).Msg("Failed to initiate an OAuth2 consent request")
+			l.Error().Err(err).Str("challenge", challenge).
+				Msg("Failed to initiate an OAuth2 consent request")
 			ctx.Error(http.StatusInternalServerError, "internal server error")
 			return
 		}
 		claims, err := ldapcfg.FindOIDCClaims(ctx.Req.Context(), resp.Subject)
 		claims = hydra.FilterClaims(&cfg.Hydra, claims, resp.RequestedScopes)
-		redirectURL, err := hydra.AcceptConsentRequest(&cfg.Hydra, challenge, !resp.Skip, resp.RequestedScopes, claims)
+		redirectURL, err := hydra.AcceptConsentRequest(
+			ctx.Req.Context(),
+			&cfg.Hydra,
+			challenge,
+			!resp.Skip,
+			resp.RequestedScopes,
+			claims,
+		)
 		if err != nil {
 			l.Error().Str("challenge", challenge).Err(err).Msg("error making accept consent request against hydra ")
 			ctx.Error(http.StatusInternalServerError, "internal server error")

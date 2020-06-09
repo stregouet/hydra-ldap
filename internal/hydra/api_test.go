@@ -2,6 +2,7 @@ package hydra
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -81,6 +82,10 @@ func newClosableBuffer(content string) *closableBuffer {
 
 type fakeClient struct {
 	mock.Mock
+}
+
+func (c *fakeClient) getContext() context.Context {
+	return nil
 }
 
 func (c *fakeClient) putJSON(u *url.URL, body io.Reader) (*http.Response, error) {
