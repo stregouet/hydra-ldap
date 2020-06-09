@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 type Config struct {
@@ -21,6 +23,21 @@ func (c *Config) ParsedUrl() *url.URL {
 	}
 }
 
+func (c *Config) ParsedClaimScopes() (map[string][]string, error) {
+	result := make(map[string][]string)
+	for _, claimScope := range c.ClaimScopes {
+		splitted := strings.Split(claimScope, ":")
+		if len(splitted) != 2 {
+			return nil, fmt.Errorf(
+				"one claim scope is not well formatted %#v (should contain exactly one `:`)",
+				claimScope)
+		}
+		claim, scope := splitted[0], splitted[1]
+		result[scope] = append(result[scope], claim)
+	}
+	return result, nil
+}
+
 func (c *Config) RememberFor() int {
 	return int(c.SessionTTL.Seconds())
 }
@@ -33,5 +50,8 @@ func (c *Config) Validate() error {
 		c.Url += "/"
 	}
 	c.ParsedUrl()
+	if _, err := c.ParsedClaimScopes(); err != nil {
+		return errors.Wrap(err, "while validating Hydra.Config")
+	}
 	return nil
 }

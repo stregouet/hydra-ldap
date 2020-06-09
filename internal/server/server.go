@@ -150,6 +150,7 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 			return
 		}
 		claims, err := ldapcfg.FindOIDCClaims(ctx.Req.Context(), resp.Subject)
+		claims = hydra.FilterClaims(&cfg.Hydra, claims, resp.RequestedScopes)
 		redirectURL, err := hydra.AcceptConsentRequest(&cfg.Hydra, challenge, !resp.Skip, resp.RequestedScopes, claims)
 		if err != nil {
 			l.Error().Str("challenge", challenge).Err(err).Msg("error making accept consent request against hydra ")

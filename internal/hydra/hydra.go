@@ -77,3 +77,21 @@ func AcceptConsentRequest(cfg *Config, challenge string, remember bool, grantSco
 	}
 	return redirectURL, nil
 }
+
+func FilterClaims(cfg *Config, claims map[string]string, requestedScopes []string) map[string]string {
+	result := make(map[string]string, len(claims))
+	// ignore error as it should alreay be handled in Validate
+	scopeClaims, _ := cfg.ParsedClaimScopes()
+	for _, scope := range requestedScopes {
+		expectedClaims, ok := scopeClaims[scope]
+		if !ok {
+			continue
+		}
+		for _, expectedClaim := range expectedClaims {
+			if value, ok := claims[expectedClaim]; ok {
+				result[expectedClaim] = value
+			}
+		}
+	}
+	return result
+}
