@@ -34,7 +34,7 @@ type ldapConn struct {
 }
 
 type Client interface {
-	searchBase(filter string, attrs []string) (*ldaplib.SearchResult, error)
+	searchUser(filter string, attrs []string) (*ldaplib.SearchResult, error)
 	bind(user, password string) error
 }
 
@@ -61,8 +61,12 @@ func (conn *ldapConn) OpenConn(ctx context.Context) error {
 	return nil
 }
 
-func (conn *ldapConn) searchBase(filter string, attrs []string) (*ldaplib.SearchResult, error) {
-	req := ldaplib.NewSearchRequest(conn.Basedn, ldaplib.ScopeWholeSubtree, ldaplib.NeverDerefAliases, 0, 0, false, filter, attrs, nil)
+func (conn *ldapConn) searchUser(filter string, attrs []string) (*ldaplib.SearchResult, error) {
+	return conn.searchBase(conn.Basedn, filter, attrs)
+}
+
+func (conn *ldapConn) searchBase(basedn, filter string, attrs []string) (*ldaplib.SearchResult, error) {
+	req := ldaplib.NewSearchRequest(basedn, ldaplib.ScopeWholeSubtree, ldaplib.NeverDerefAliases, 0, 0, false, filter, attrs, nil)
 	res, err := conn.Search(req)
 	if err != nil {
 		if ldapErr, ok := err.(*ldaplib.Error); ok && ldapErr.ResultCode == ldaplib.LDAPResultNoSuchObject {
@@ -96,7 +100,7 @@ func findUserDN(client Client, username string) (string, error) {
 
 func findUserDetails(client Client, username string, attrs []string) (map[string]string, error) {
 	filter := fmt.Sprintf(userFilter, username)
-	res, err := client.searchBase(filter, attrs)
+	res, err := client.searchUser(filter, attrs)
 	if err != nil {
 		return nil, err
 	}

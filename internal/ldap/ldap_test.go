@@ -23,7 +23,7 @@ func TestIsAuthorized(t *testing.T) {
 	)
 	t.Run("invalid credential", func(t *testing.T) {
 		moq := new(fakeClient)
-		moq.On("searchBase",
+		moq.On("searchUser",
 			fmt.Sprintf(userFilter, username),
 			make([]string, 0),
 		).Return(
@@ -53,7 +53,7 @@ func TestIsAuthorized(t *testing.T) {
 
 	t.Run("user not found", func(t *testing.T) {
 		moq := new(fakeClient)
-		moq.On("searchBase",
+		moq.On("searchUser",
 			fmt.Sprintf(userFilter, username),
 			make([]string, 0),
 		).Return(
@@ -72,7 +72,7 @@ func TestIsAuthorized(t *testing.T) {
 
 	t.Run("everything ok", func(t *testing.T) {
 		moq := new(fakeClient)
-		moq.On("searchBase",
+		moq.On("searchUser",
 			fmt.Sprintf(userFilter, username),
 			make([]string, 0),
 		).Return(
@@ -106,7 +106,7 @@ func TestOIDCClaims(t *testing.T) {
 	}
 	t.Run("user not found", func(t *testing.T) {
 		moq := new(fakeClient)
-		moq.On("searchBase",
+		moq.On("searchUser",
 			fmt.Sprintf(userFilter, username),
 			[]string{"name", "sn"},
 		).Return(
@@ -121,7 +121,7 @@ func TestOIDCClaims(t *testing.T) {
 
 	t.Run("everything ok", func(t *testing.T) {
 		moq := new(fakeClient)
-		moq.On("searchBase",
+		moq.On("searchUser",
 			fmt.Sprintf(userFilter, username),
 			[]string{"name", "sn"},
 		).Return(
@@ -158,7 +158,7 @@ type fakeClient struct {
 	mock.Mock
 }
 
-func (c *fakeClient) searchBase(filter string, attrs []string) (*ldaplib.SearchResult, error) {
+func (c *fakeClient) searchUser(filter string, attrs []string) (*ldaplib.SearchResult, error) {
 	if attrs != nil {
 		sort.Strings(attrs)
 	}
