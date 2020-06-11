@@ -108,7 +108,7 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		ctx.Data["client_id"] = clientId
 		ctx.Data["client_name"] = clientName
 
-		switch ok, err := ldapcfg.IsAuthorized(ctx.Req.Context(), username, password); {
+		switch ok, err := ldapcfg.IsAuthorized(ctx.Req.Context(), username, password, clientId); {
 		case err != nil:
 			l.Error().Str("challenge", challenge).Err(err).Msg("error trying to authentificate")
 			ctx.Data["error"] = true

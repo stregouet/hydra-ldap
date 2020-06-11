@@ -5,9 +5,10 @@ import (
 )
 
 type Config struct {
-	Tls      bool
-	Endpoint string
-	Basedn   string
+	Tls        bool
+	Endpoint   string
+	Basedn     string
+	RoleBaseDN string
 
 	Admindn string
 	Adminpw string

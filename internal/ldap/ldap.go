@@ -8,6 +8,8 @@ import (
 
 	"github.com/pkg/errors"
 	ldaplib "gopkg.in/ldap.v2"
+
+	"github.com/stregouet/hydra-ldap/internal/logging"
 )
 
 var (
@@ -26,6 +28,8 @@ var (
 
 	// ldap search filter for user
 	userFilter = "(&(|(objectClass=organizationalPerson)(objectClass=inetOrgPerson))(|(uid=%[1]s)(mail=%[1]s)(userPrincipalName=%[1]s)(sAMAccountName=%[1]s)))"
+	// ldap search filter for roles
+	roleFilter = "(member=%s)"
 )
 
 type ldapConn struct {
@@ -35,6 +39,7 @@ type ldapConn struct {
 
 type Client interface {
 	searchUser(filter string, attrs []string) (*ldaplib.SearchResult, error)
+	searchRoles(filter, appId string, attrs []string) (*ldaplib.SearchResult, error)
 	bind(user, password string) error
 }
 
@@ -65,6 +70,12 @@ func (conn *ldapConn) searchUser(filter string, attrs []string) (*ldaplib.Search
 	return conn.searchBase(conn.Basedn, filter, attrs)
 }
 
+func (conn *ldapConn) searchRoles(filter, appId string, attrs []string) (*ldaplib.SearchResult, error) {
+	basedn := fmt.Sprintf("ou=%s,%s", appId, conn.RoleBaseDN)
+	logging.Debug().Str("basedn", basedn).Str("filter", filter).Msg("will search roles")
+	return conn.searchBase(basedn, filter, attrs)
+}
+
 func (conn *ldapConn) searchBase(basedn, filter string, attrs []string) (*ldaplib.SearchResult, error) {
 	req := ldaplib.NewSearchRequest(basedn, ldaplib.ScopeWholeSubtree, ldaplib.NeverDerefAliases, 0, 0, false, filter, attrs, nil)
 	res, err := conn.Search(req)
@@ -87,6 +98,18 @@ func bind(client Client, bindDN, password string) error {
 		return errInvalidCredentials
 	}
 	return err
+}
+
+func inAppRole(client Client, userDN, appId string) error {
+	filter := fmt.Sprintf(roleFilter, userDN)
+	res, err := client.searchRoles(filter, appId, []string{"cn"})
+	if err != nil {
+		return errors.Wrap(err, "while searching roles")
+	}
+	if len(res.Entries) == 0 {
+		return errUnauthorize
+	}
+	return nil
 }
 
 func findUserDN(client Client, username string) (string, error) {
@@ -123,22 +146,25 @@ func findUserDetails(client Client, username string, attrs []string) (map[string
 	return entries[0], nil
 }
 
-func (cfg *Config) IsAuthorized(ctx context.Context, username, password string) (bool, error) {
+func (cfg *Config) IsAuthorized(ctx context.Context, username, password, appId string) (bool, error) {
 	conn := new(ldapConn)
 	conn.Init(cfg)
 	if err := conn.OpenConn(ctx); err != nil {
 		return false, err
 	}
 	defer conn.Close()
-	return isAuthorized(conn, username, password)
+	return isAuthorized(conn, username, password, appId)
 }
 
-func isAuthorized(cli Client, username, password string) (bool, error) {
+func isAuthorized(cli Client, username, password, appId string) (bool, error) {
 	dn, err := findUserDN(cli, username)
 	if err != nil {
 		return false, err
 	}
 	if err := bind(cli, dn, password); err != nil {
+		return false, err
+	}
+	if err := inAppRole(cli, dn, appId); err != nil {
 		return false, err
 	}
 	return true, nil

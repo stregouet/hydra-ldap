@@ -40,7 +40,7 @@ func TestIsAuthorized(t *testing.T) {
 			ldaplib.NewError(ldaplib.LDAPResultInvalidCredentials, errors.New("oups")),
 		)
 
-		got, err := isAuthorized(moq, username, password)
+		got, err := isAuthorized(moq, username, password, "client-id")
 		if assert.Error(t, err) {
 			assert.Equal(t, errInvalidCredentials, err)
 		}
@@ -57,9 +57,40 @@ func TestIsAuthorized(t *testing.T) {
 			nil,
 		)
 
-		got, err := isAuthorized(moq, username, password)
+		got, err := isAuthorized(moq, username, password, "client-id")
 		if assert.Error(t, err) {
 			assert.Equal(t, errUserNotFound, err)
+		}
+		assert.False(t, got)
+	})
+
+	t.Run("user not in group", func(t *testing.T) {
+		moq := new(fakeClient)
+		moq.On("searchUser",
+			fmt.Sprintf(userFilter, username),
+			make([]string, 0),
+		).Return(
+			makeLdapResult([]map[string]string{
+				{"dn": dn},
+			}),
+			nil,
+		)
+		moq.On("searchRoles",
+			fmt.Sprintf(roleFilter, dn),
+			"client-id",
+			[]string{"cn"},
+		).Return(
+			makeLdapResult([]map[string]string{}),
+			nil,
+		)
+		moq.On("bind",
+			dn,
+			password,
+		).Return(nil)
+
+		got, err := isAuthorized(moq, username, password, "client-id")
+		if assert.Error(t, err) {
+			assert.Equal(t, errUnauthorize, err)
 		}
 		assert.False(t, got)
 	})
@@ -75,12 +106,22 @@ func TestIsAuthorized(t *testing.T) {
 			}),
 			nil,
 		)
+		moq.On("searchRoles",
+			fmt.Sprintf(roleFilter, dn),
+			"client-id",
+			[]string{"cn"},
+		).Return(
+			makeLdapResult([]map[string]string{
+				{"dn": dn},
+			}),
+			nil,
+		)
 		moq.On("bind",
 			dn,
 			password,
 		).Return(nil)
 
-		got, err := isAuthorized(moq, username, password)
+		got, err := isAuthorized(moq, username, password, "client-id")
 		assert.NoError(t, err)
 		assert.True(t, got)
 	})
@@ -149,6 +190,14 @@ func makeLdapResult(entries []map[string]string) *ldaplib.SearchResult {
 
 type fakeClient struct {
 	mock.Mock
+}
+
+func (c *fakeClient) searchRoles(filter, appId string, attrs []string) (*ldaplib.SearchResult, error) {
+	if attrs != nil {
+		sort.Strings(attrs)
+	}
+	args := c.Called(filter, appId, attrs)
+	return args.Get(0).(*ldaplib.SearchResult), args.Error(1)
 }
 
 func (c *fakeClient) searchUser(filter string, attrs []string) (*ldaplib.SearchResult, error) {
