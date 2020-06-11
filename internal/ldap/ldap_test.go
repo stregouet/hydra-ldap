@@ -27,13 +27,9 @@ func TestIsAuthorized(t *testing.T) {
 			fmt.Sprintf(userFilter, username),
 			make([]string, 0),
 		).Return(
-			&ldaplib.SearchResult{
-				Entries: []*ldaplib.Entry{
-					&ldaplib.Entry{
-						DN: dn,
-					},
-				},
-			},
+			makeLdapResult([]map[string]string{
+				{"dn": dn},
+			}),
 			nil,
 		)
 
@@ -57,9 +53,7 @@ func TestIsAuthorized(t *testing.T) {
 			fmt.Sprintf(userFilter, username),
 			make([]string, 0),
 		).Return(
-			&ldaplib.SearchResult{
-				Entries: make([]*ldaplib.Entry, 0),
-			},
+			makeLdapResult(make([]map[string]string, 0)),
 			nil,
 		)
 
@@ -76,13 +70,9 @@ func TestIsAuthorized(t *testing.T) {
 			fmt.Sprintf(userFilter, username),
 			make([]string, 0),
 		).Return(
-			&ldaplib.SearchResult{
-				Entries: []*ldaplib.Entry{
-					&ldaplib.Entry{
-						DN: dn,
-					},
-				},
-			},
+			makeLdapResult([]map[string]string{
+				{"dn": dn},
+			}),
 			nil,
 		)
 		moq.On("bind",
@@ -110,9 +100,7 @@ func TestOIDCClaims(t *testing.T) {
 			fmt.Sprintf(userFilter, username),
 			[]string{"name", "sn"},
 		).Return(
-			&ldaplib.SearchResult{
-				Entries: make([]*ldaplib.Entry, 0),
-			},
+			makeLdapResult(make([]map[string]string, 0)),
 			nil,
 		)
 		_, err := cfg.findOIDCClaims(moq, username)
@@ -125,23 +113,9 @@ func TestOIDCClaims(t *testing.T) {
 			fmt.Sprintf(userFilter, username),
 			[]string{"name", "sn"},
 		).Return(
-			&ldaplib.SearchResult{
-				Entries: []*ldaplib.Entry{
-					&ldaplib.Entry{
-						DN: dn,
-						Attributes: []*ldaplib.EntryAttribute{
-							&ldaplib.EntryAttribute{
-								Name:   "name",
-								Values: []string{"Titi"},
-							},
-							&ldaplib.EntryAttribute{
-								Name:   "sn",
-								Values: []string{"Titi Dupont"},
-							},
-						},
-					},
-				},
-			},
+			makeLdapResult([]map[string]string{
+				{"dn": dn, "name": "Titi", "sn": "Titi Dupont"},
+			}),
 			nil,
 		)
 		claims, err := cfg.findOIDCClaims(moq, username)
@@ -152,6 +126,25 @@ func TestOIDCClaims(t *testing.T) {
 		}
 		assert.Equal(t, expected, claims)
 	})
+}
+
+func makeLdapResult(entries []map[string]string) *ldaplib.SearchResult {
+	result := ldaplib.SearchResult{Entries: make([]*ldaplib.Entry, 0)}
+	for _, entry := range entries {
+		ldapEntry := new(ldaplib.Entry)
+		for k, v := range entry {
+			if k == "dn" {
+				ldapEntry.DN = v
+			} else {
+				ldapEntry.Attributes = append(ldapEntry.Attributes, &ldaplib.EntryAttribute{
+					Name:   k,
+					Values: []string{v},
+				})
+			}
+		}
+		result.Entries = append(result.Entries, ldapEntry)
+	}
+	return &result
 }
 
 type fakeClient struct {
