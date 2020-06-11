@@ -40,11 +40,10 @@ func TestIsAuthorized(t *testing.T) {
 			ldaplib.NewError(ldaplib.LDAPResultInvalidCredentials, errors.New("oups")),
 		)
 
-		got, err := isAuthorized(moq, username, password, "client-id")
+		err := isAuthorized(moq, username, password, "client-id")
 		if assert.Error(t, err) {
-			assert.Equal(t, errInvalidCredentials, err)
+			assert.Equal(t, ErrInvalidCredentials, err)
 		}
-		assert.False(t, got)
 	})
 
 	t.Run("user not found", func(t *testing.T) {
@@ -57,11 +56,10 @@ func TestIsAuthorized(t *testing.T) {
 			nil,
 		)
 
-		got, err := isAuthorized(moq, username, password, "client-id")
+		err := isAuthorized(moq, username, password, "client-id")
 		if assert.Error(t, err) {
-			assert.Equal(t, errUserNotFound, err)
+			assert.Equal(t, ErrUserNotFound, err)
 		}
-		assert.False(t, got)
 	})
 
 	t.Run("user not in group", func(t *testing.T) {
@@ -88,11 +86,10 @@ func TestIsAuthorized(t *testing.T) {
 			password,
 		).Return(nil)
 
-		got, err := isAuthorized(moq, username, password, "client-id")
+		err := isAuthorized(moq, username, password, "client-id")
 		if assert.Error(t, err) {
-			assert.Equal(t, errUnauthorize, err)
+			assert.Equal(t, ErrUnauthorize, err)
 		}
-		assert.False(t, got)
 	})
 
 	t.Run("everything ok", func(t *testing.T) {
@@ -121,9 +118,8 @@ func TestIsAuthorized(t *testing.T) {
 			password,
 		).Return(nil)
 
-		got, err := isAuthorized(moq, username, password, "client-id")
+		err := isAuthorized(moq, username, password, "client-id")
 		assert.NoError(t, err)
-		assert.True(t, got)
 	})
 }
 
@@ -145,7 +141,7 @@ func TestOIDCClaims(t *testing.T) {
 			nil,
 		)
 		_, err := cfg.findOIDCClaims(moq, username)
-		assert.Equal(t, errUserNotFound, err)
+		assert.Equal(t, ErrUserNotFound, err)
 	})
 
 	t.Run("everything ok", func(t *testing.T) {

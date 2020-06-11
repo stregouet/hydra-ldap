@@ -13,12 +13,12 @@ import (
 )
 
 var (
-	// errUnauthorize is an error that happens when a user is not member of client-id group
-	errUnauthorize = fmt.Errorf("unauthorized for this app/client")
-	// errUserNotFound is an error that happens when requested username is not found in ldap database
-	errUserNotFound = fmt.Errorf("user not found")
-	// errInvalidCredentials is an error that happens when a user's password is invalid.
-	errInvalidCredentials = fmt.Errorf("invalid credentials")
+	// ErrUnauthorize is an error that happens when a user is not member of client-id group
+	ErrUnauthorize = fmt.Errorf("unauthorized for this app/client")
+	// ErrUserNotFound is an error that happens when requested username is not found in ldap database
+	ErrUserNotFound = fmt.Errorf("user not found")
+	// ErrInvalidCredentials is an error that happens when a user's password is invalid.
+	ErrInvalidCredentials = fmt.Errorf("invalid credentials")
 	// errConnectionTimeout is an error that happens when no one LDAP endpoint responds.
 	errConnectionTimeout = fmt.Errorf("connection timeout")
 	// errMissedUsername is an error that happens
@@ -95,7 +95,7 @@ func (conn *ldapConn) bind(bindDN, password string) error {
 func bind(client Client, bindDN, password string) error {
 	err := client.bind(bindDN, password)
 	if ldapErr, ok := err.(*ldaplib.Error); ok && ldapErr.ResultCode == ldaplib.LDAPResultInvalidCredentials {
-		return errInvalidCredentials
+		return ErrInvalidCredentials
 	}
 	return err
 }
@@ -107,7 +107,7 @@ func inAppRole(client Client, userDN, appId string) error {
 		return errors.Wrap(err, "while searching roles")
 	}
 	if len(res.Entries) == 0 {
-		return errUnauthorize
+		return ErrUnauthorize
 	}
 	return nil
 }
@@ -129,7 +129,7 @@ func findUserDetails(client Client, username string, attrs []string) (map[string
 	}
 
 	if len(res.Entries) != 1 {
-		return nil, errUserNotFound
+		return nil, ErrUserNotFound
 	}
 
 	var entries []map[string]string
@@ -146,28 +146,28 @@ func findUserDetails(client Client, username string, attrs []string) (map[string
 	return entries[0], nil
 }
 
-func (cfg *Config) IsAuthorized(ctx context.Context, username, password, appId string) (bool, error) {
+func (cfg *Config) IsAuthorized(ctx context.Context, username, password, appId string) error {
 	conn := new(ldapConn)
 	conn.Init(cfg)
 	if err := conn.OpenConn(ctx); err != nil {
-		return false, err
+		return err
 	}
 	defer conn.Close()
 	return isAuthorized(conn, username, password, appId)
 }
 
-func isAuthorized(cli Client, username, password, appId string) (bool, error) {
+func isAuthorized(cli Client, username, password, appId string) error {
 	dn, err := findUserDN(cli, username)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if err := bind(cli, dn, password); err != nil {
-		return false, err
+		return err
 	}
 	if err := inAppRole(cli, dn, appId); err != nil {
-		return false, err
+		return err
 	}
-	return true, nil
+	return nil
 }
 
 func (cfg *Config) FindOIDCClaims(ctx context.Context, subject string) (map[string]string, error) {

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 
@@ -108,37 +109,41 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		ctx.Data["client_id"] = clientId
 		ctx.Data["client_name"] = clientName
 
-		switch ok, err := ldapcfg.IsAuthorized(ctx.Req.Context(), username, password, clientId); {
-		case err != nil:
-			l.Error().Str("challenge", challenge).Err(err).Msg("error trying to authentificate")
+		switch err := ldapcfg.IsAuthorized(ctx.Req.Context(), username, password, clientId); errors.Cause(err) {
+		case nil:
+			remember := ctx.Query("rememberme") != ""
+			// XXX `subject` parameter could be either email or uid is this a problem?
+			redirectURL, err := hydra.AcceptLoginRequest(
+				ctx.Req.Context(),
+				&cfg.Hydra,
+				remember,
+				username,
+				challenge,
+			)
+			if err != nil {
+				l.Error().Str("challenge", challenge).Err(err).Msg("error making accept login request against hydra ")
+				ctx.Data["error"] = true
+				ctx.Data["msg"] = err.Error()
+				ctx.HTML(http.StatusInternalServerError, "login")
+			} else {
+				ctx.Redirect(redirectURL, http.StatusFound)
+			}
+		case ldap.ErrUnauthorize:
+			l.Debug().Str("challenge", challenge).Msg("unable to authorize")
 			ctx.Data["error"] = true
-			ctx.Data["msg"] = err.Error()
-			ctx.HTML(http.StatusInternalServerError, "login")
-		case !ok:
+			ctx.Data["msg"] = fmt.Sprintf("user `%s` is not authorized to access this app", username)
+			ctx.HTML(http.StatusUnauthorized, "login")
+		case ldap.ErrUserNotFound, ldap.ErrInvalidCredentials:
 			l.Debug().Str("challenge", challenge).Msg("unable to authentificate")
 			ctx.Data["error"] = true
 			ctx.Data["msg"] = "bad username or password"
 			ctx.HTML(http.StatusUnauthorized, "login")
-			return
-		}
-		remember := ctx.Query("rememberme") != ""
-		// XXX `subject` parameter could be either email or uid is this a problem?
-		redirectURL, err := hydra.AcceptLoginRequest(
-			ctx.Req.Context(),
-			&cfg.Hydra,
-			remember,
-			username,
-			challenge,
-		)
-		if err != nil {
-			l.Error().Str("challenge", challenge).Err(err).Msg("error making accept login request against hydra ")
+		default:
+			l.Error().Str("challenge", challenge).Err(err).Msg("error trying to authentificate")
 			ctx.Data["error"] = true
 			ctx.Data["msg"] = err.Error()
 			ctx.HTML(http.StatusInternalServerError, "login")
-			return
 		}
-
-		ctx.Redirect(redirectURL, http.StatusFound)
 	}).Name("login_form")
 
 	m.Combo("/auth/consent").Get(func(ctx *macaron.Context, ldapcfg *ldap.Config) {
