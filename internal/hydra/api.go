@@ -10,6 +10,9 @@ import (
 	"net/url"
 
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+
+	"github.com/stregouet/hydra-ldap/internal/logging"
 )
 
 type ClientInfo struct {
@@ -99,8 +102,13 @@ func call(c httpClientInterface, info *reqInfo, jsonReq interface{}, jsonResp in
 		if err := json.NewEncoder(buf).Encode(jsonReq); err != nil {
 			return err
 		}
+		if logging.Logger.GetLevel() <= zerolog.DebugLevel {
+			// convert buf into string only if necessary
+			logging.Debug().Str("data", buf.String()).Str("url", urlPath).Msg("will call hydra server")
+		}
 		resp, httperr = c.putJSON(ref, buf)
 	} else {
+		logging.Debug().Str("url", urlPath).Msg("will call hydra server")
 		resp, httperr = c.get(ref)
 	}
 
