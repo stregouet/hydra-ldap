@@ -177,9 +177,27 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 			ctx.Error(http.StatusInternalServerError, "internal server error")
 			return
 		}
+		ctx.Data["Title"] = "login-sso"
+		ctx.Data["client_name"] = resp.Client.Name
+
 		claims, err := ldapcfg.NewClientWithContext(ctx.Req.Context()).
 			WithAppId(resp.Client.Id).
 			FindOIDCClaims(resp.Subject)
+		switch errors.Cause(err) {
+		case nil:
+			break
+		case ldap.ErrUnauthorize:
+			l.Debug().Str("challenge", challenge).Msg("unable to authorize during consent flow")
+			ctx.Data["error"] = true
+			ctx.Data["msg"] = fmt.Sprintf("user `%s` is not authorized to access this app", resp.Subject)
+			ctx.HTML(http.StatusUnauthorized, "message")
+			return
+		default:
+			l.Error().Err(err).Str("challenge", challenge).
+				Msg("error fetching claim from ldap")
+			ctx.Error(http.StatusInternalServerError, "internal server error")
+			return
+		}
 		claims = hydra.FilterClaims(&cfg.Hydra, claims, resp.RequestedScopes)
 		redirectURL, err := hydra.AcceptConsentRequest(
 			ctx.Req.Context(),
