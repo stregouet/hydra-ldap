@@ -97,43 +97,6 @@ func systemdLevelPrefix(i interface{}) string {
 
 func init() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	// Logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
 	output := zerolog.NewConsoleWriter()
 	Logger = zerolog.New(output).With().Timestamp().Logger()
 }
-
-// func consoleDefaultFormatTimestamp(timeFormat string, noColor bool) Formatter {
-// 	if timeFormat == "" {
-// 		timeFormat = consoleDefaultTimeFormat
-// 	}
-// 	return func(i interface{}) string {
-// 		t := "<nil>"
-// 		switch tt := i.(type) {
-// 		case string:
-// 			ts, err := time.Parse(TimeFieldFormat, tt)
-// 			if err != nil {
-// 				t = tt
-// 			} else {
-// 				t = ts.Format(timeFormat)
-// 			}
-// 		case json.Number:
-// 			i, err := tt.Int64()
-// 			if err != nil {
-// 				t = tt.String()
-// 			} else {
-// 				var sec, nsec int64 = i, 0
-// 				switch TimeFieldFormat {
-// 				case TimeFormatUnixMs:
-// 					nsec = int64(time.Duration(i) * time.Millisecond)
-// 					sec = 0
-// 				case TimeFormatUnixMicro:
-// 					nsec = int64(time.Duration(i) * time.Microsecond)
-// 					sec = 0
-// 				}
-// 				ts := time.Unix(sec, nsec).UTC()
-// 				t = ts.Format(timeFormat)
-// 			}
-// 		}
-// 		return colorize(t, colorDarkGray, noColor)
-// 	}
-// }
