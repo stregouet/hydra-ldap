@@ -78,6 +78,7 @@ func TestFilterClaims(t *testing.T) {
 				"name":        "Jean",
 				"email":       "jean.dupont@example.com",
 			},
+			Roles: []string{"user", "admin"},
 		}
 		result := FilterClaims(&cfg, &initialClaims, []string{"profile", "email"})
 		expected := &Claim{
@@ -85,6 +86,35 @@ func TestFilterClaims(t *testing.T) {
 				"name":  "Jean",
 				"email": "jean.dupont@example.com",
 			},
+		}
+
+		assert.Equal(t, expected, result)
+	})
+
+	t.Run("profile and email and roles scope", func(t *testing.T) {
+		cfg := Config{
+			ClaimScopes: []string{
+				"name:profile",
+				"email:email",
+				"roles:roles",
+			},
+		}
+
+		initialClaims := Claim{
+			Details: map[string]string{
+				"family_name": "Dupont",
+				"name":        "Jean",
+				"email":       "jean.dupont@example.com",
+			},
+			Roles: []string{"user", "admin"},
+		}
+		result := FilterClaims(&cfg, &initialClaims, []string{"profile", "email", "roles"})
+		expected := &Claim{
+			Details: map[string]string{
+				"name":  "Jean",
+				"email": "jean.dupont@example.com",
+			},
+			Roles: []string{"user", "admin"},
 		}
 
 		assert.Equal(t, expected, result)

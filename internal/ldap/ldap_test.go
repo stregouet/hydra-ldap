@@ -112,7 +112,7 @@ func TestIsAuthorized(t *testing.T) {
 			[]string{"cn"},
 		).Return(
 			makeLdapResult([]map[string]string{
-				{"dn": dn},
+				{"cn": "admin"},
 			}),
 			nil,
 		)
@@ -160,6 +160,16 @@ func TestOIDCClaims(t *testing.T) {
 			}),
 			nil,
 		)
+		moq.On("searchBase",
+			"ou=client-id,ou=groups",
+			fmt.Sprintf(roleFilter, dn),
+			[]string{"cn"},
+		).Return(
+			makeLdapResult([]map[string]string{
+				{"cn": "admin"},
+			}),
+			nil,
+		)
 		claims, err := c.FindOIDCClaims(username)
 		assert.NoError(t, err)
 		expected := hydra.Claim{
@@ -167,6 +177,7 @@ func TestOIDCClaims(t *testing.T) {
 				"name":        "Titi",
 				"family_name": "Titi Dupont",
 			},
+			Roles: []string{"admin"},
 		}
 		assert.Equal(t, &expected, claims)
 	})

@@ -115,13 +115,9 @@ func (c *client) bind(bindDN, password string) error {
 }
 
 func (c *client) inAppRole(userDN string) error {
-	filter := fmt.Sprintf(roleFilter, userDN)
-	res, err := c.searchRoles(filter, []string{"cn"})
+	_, err := c.findUserRoles(userDN)
 	if err != nil {
-		return errors.Wrap(err, "while searching roles")
-	}
-	if len(res.Entries) == 0 {
-		return ErrUnauthorize
+		return errors.Wrap(err, "while checking user in app role")
 	}
 	return nil
 }
@@ -133,6 +129,27 @@ func (c *client) findUserDN(username string) (string, error) {
 	}
 
 	return entry["dn"], nil
+}
+
+func (c *client) findUserRoles(userDN string) ([]string, error) {
+	filter := fmt.Sprintf(roleFilter, userDN)
+	res, err := c.searchRoles(filter, []string{"cn"})
+	if err != nil {
+		return nil, errors.Wrap(err, "while searching roles")
+	}
+
+	roles := make([]string, 0)
+	for _, v := range res.Entries {
+		for _, attr := range v.Attributes {
+			if attr.Name == "cn" {
+				roles = append(roles, attr.Values[0])
+			}
+		}
+	}
+	if len(roles) == 0 {
+		return nil, ErrUnauthorize
+	}
+	return roles, nil
 }
 
 func (c *client) findUserDetails(username string, attrs []string) (map[string]string, error) {
@@ -192,8 +209,13 @@ func (c *client) FindOIDCClaims(subject string) (*hydra.Claim, error) {
 	if err != nil {
 		return nil, err
 	}
+	roles, err := c.findUserRoles(details["dn"])
+	if err != nil {
+		return nil, err
+	}
 	claims := hydra.Claim{
 		Details: make(map[string]string),
+		Roles:   roles,
 	}
 
 	for ldapAttr, oidcAttr := range c.cfg.attrsMap() {

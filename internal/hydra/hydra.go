@@ -110,6 +110,8 @@ func FilterClaims(cfg *Config, claims *Claim, requestedScopes []string) *Claim {
 		for _, expectedClaim := range expectedClaims {
 			if value, ok := claims.Details[expectedClaim]; ok {
 				result.Details[expectedClaim] = value
+			} else if expectedClaim == "roles" {
+				result.Roles = claims.Roles
 			}
 		}
 	}
