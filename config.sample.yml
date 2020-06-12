@@ -1,0 +1,35 @@
+---
+# development mode, passed to macaron
+dev: false
+# host and port to listen on (host:port)
+listen: 'localhost:8080'
+hydra:
+  # admin url of ORY hydra server
+  url: 'http://localhost:4445'
+  # user session's TTL, correspond to hydra `remember_for` parameter (format:
+  # time.Duration)
+  sessionttl: 24h
+  #
+  # mapping of openid connect claims to scopes (all claims are url encoded)
+  # Can be set with environment variable as follow:
+  #
+  #     export HYDRA_CLAIMSCOPES=name:profile,family_name:profile,email:email
+  #
+  claimscopes:
+    - 'name:profile'
+    - 'family_name:profile'
+    - 'given_name:profile'
+ldap:
+  # should LDAP connection be established via TLS
+  tls: false
+
+  endpoint: 'localhost:389'
+  basedn: 'ou=users,dc=example,dc=com'
+  rolebasedn: 'ou=groups,dc=example,dc=com'
+  attrs:
+    - 'name:name'
+    - 'sn:family_name'
+    - 'givenName:given_name'
+    - 'mail:email'
+log:
+  level: debug
