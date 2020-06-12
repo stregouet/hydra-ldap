@@ -24,7 +24,6 @@ func Start(cfg *config.Config) {
 	}
 	os.Setenv("MACARON_ENV", macaronEnv)
 	m := macaron.NewWithLogger(logging.Logger.With().Str("component", "macaron").Logger())
-	logging.Info().Str("propname", "value").Msg("yo !")
 
 	setupMiddlewares(m)
 	setupRoutes(m, cfg)
