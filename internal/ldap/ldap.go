@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	ldaplib "gopkg.in/ldap.v2"
 
+	"github.com/stregouet/hydra-ldap/internal/hydra"
 	"github.com/stregouet/hydra-ldap/internal/logging"
 )
 
@@ -177,7 +178,7 @@ func (c *client) IsAuthorized(username, password string) error {
 	return nil
 }
 
-func (c *client) FindOIDCClaims(subject string) (map[string]string, error) {
+func (c *client) FindOIDCClaims(subject string) (*hydra.Claim, error) {
 	if err := c.conn.openConn(c.ctx, c.cfg.Endpoint, c.cfg.Tls); err != nil {
 		return nil, err
 	}
@@ -191,12 +192,14 @@ func (c *client) FindOIDCClaims(subject string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	claims := make(map[string]string)
+	claims := hydra.Claim{
+		Details: make(map[string]string),
+	}
 
 	for ldapAttr, oidcAttr := range c.cfg.attrsMap() {
 		if value, ok := details[ldapAttr]; ok {
-			claims[oidcAttr] = value
+			claims.Details[oidcAttr] = value
 		}
 	}
-	return claims, nil
+	return &claims, nil
 }

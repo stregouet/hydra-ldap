@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	ldaplib "gopkg.in/ldap.v2"
+
+	"github.com/stregouet/hydra-ldap/internal/hydra"
 )
 
 func TestIsAuthorized(t *testing.T) {
@@ -160,11 +162,13 @@ func TestOIDCClaims(t *testing.T) {
 		)
 		claims, err := c.FindOIDCClaims(username)
 		assert.NoError(t, err)
-		expected := map[string]string{
-			"name":        "Titi",
-			"family_name": "Titi Dupont",
+		expected := hydra.Claim{
+			Details: map[string]string{
+				"name":        "Titi",
+				"family_name": "Titi Dupont",
+			},
 		}
-		assert.Equal(t, expected, claims)
+		assert.Equal(t, &expected, claims)
 	})
 }
 

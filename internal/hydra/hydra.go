@@ -17,6 +17,22 @@ var (
 	ErrChallengeExpired = errors.New("challenge expired")
 )
 
+type Claim struct {
+	Details map[string]string
+	Roles   []string
+}
+
+func (c *Claim) prepareMarshal() map[string]interface{} {
+	result := make(map[string]interface{}, len(c.Details)+1)
+	for k, v := range c.Details {
+		result[k] = v
+	}
+	if c.Roles != nil {
+		result["roles"] = c.Roles
+	}
+	return result
+}
+
 func GetLoginRequest(ctx context.Context, cfg *Config, challenge string) (*HydraResp, error) {
 	resp, err := getRequest(ctx, cfg, &reqInfo{reqType: LOGIN_REQ, challenge: challenge})
 	if err != nil {
@@ -53,7 +69,7 @@ func GetConsentRequest(ctx context.Context, cfg *Config, challenge string) (*Hyd
 	return resp, nil
 }
 
-func AcceptConsentRequest(ctx context.Context, cfg *Config, challenge string, remember bool, grantScope []string, claims interface{}) (string, error) {
+func AcceptConsentRequest(ctx context.Context, cfg *Config, challenge string, remember bool, grantScope []string, claims *Claim) (string, error) {
 	type session struct {
 		IDToken interface{} `json:"id_token,omitempty"`
 	}
@@ -67,7 +83,7 @@ func AcceptConsentRequest(ctx context.Context, cfg *Config, challenge string, re
 		Remember:    remember,
 		RememberFor: cfg.RememberFor(),
 		Session: session{
-			IDToken: claims,
+			IDToken: claims.prepareMarshal(),
 		},
 	}
 	if challenge == "" {
@@ -80,8 +96,10 @@ func AcceptConsentRequest(ctx context.Context, cfg *Config, challenge string, re
 	return redirectURL, nil
 }
 
-func FilterClaims(cfg *Config, claims map[string]string, requestedScopes []string) map[string]string {
-	result := make(map[string]string, len(claims))
+func FilterClaims(cfg *Config, claims *Claim, requestedScopes []string) *Claim {
+	result := &Claim{
+		Details: make(map[string]string, len(claims.Details)),
+	}
 	// ignore error as it should alreay be handled in Validate
 	scopeClaims, _ := cfg.ParsedClaimScopes()
 	for _, scope := range requestedScopes {
@@ -90,8 +108,8 @@ func FilterClaims(cfg *Config, claims map[string]string, requestedScopes []strin
 			continue
 		}
 		for _, expectedClaim := range expectedClaims {
-			if value, ok := claims[expectedClaim]; ok {
-				result[expectedClaim] = value
+			if value, ok := claims.Details[expectedClaim]; ok {
+				result.Details[expectedClaim] = value
 			}
 		}
 	}
