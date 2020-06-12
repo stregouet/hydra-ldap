@@ -32,53 +32,39 @@ var (
 	roleFilter = "(member=%s)"
 )
 
-type ldapConn struct {
+type ConnInterface interface {
+	openConn(ctx context.Context, endpoint string, istls bool) error
+	searchBase(basedn, filter string, attrs []string) (*ldaplib.SearchResult, error)
+	Bind(user, password string) error
+	Close()
+}
+
+type conn struct {
 	ldaplib.Client
-	*Config
 }
 
-type Client interface {
-	searchUser(filter string, attrs []string) (*ldaplib.SearchResult, error)
-	searchRoles(filter, appId string, attrs []string) (*ldaplib.SearchResult, error)
-	bind(user, password string) error
-}
-
-func (conn *ldapConn) Init(cfg *Config) {
-	conn.Config = cfg
-}
-
-func (conn *ldapConn) OpenConn(ctx context.Context) error {
+func (c *conn) openConn(ctx context.Context, endpoint string, istls bool) error {
 	var tcpcn net.Conn
 	var err error
 	d := net.Dialer{Timeout: ldaplib.DefaultTimeout}
-	tcpcn, err = d.DialContext(ctx, "tcp", conn.Endpoint)
+	tcpcn, err = d.DialContext(ctx, "tcp", endpoint)
 	if err != nil {
 		return errors.Wrap(err, "open tcp to ldap server failed")
 	}
 
-	if conn.Tls {
+	if istls {
 		tcpcn = tls.Client(tcpcn, &tls.Config{InsecureSkipVerify: true})
 	}
-	ldapcn := ldaplib.NewConn(tcpcn, conn.Tls)
+	ldapcn := ldaplib.NewConn(tcpcn, istls)
 
 	ldapcn.Start()
-	conn.Client = ldapcn
+	c.Client = ldapcn
 	return nil
 }
 
-func (conn *ldapConn) searchUser(filter string, attrs []string) (*ldaplib.SearchResult, error) {
-	return conn.searchBase(conn.Basedn, filter, attrs)
-}
-
-func (conn *ldapConn) searchRoles(filter, appId string, attrs []string) (*ldaplib.SearchResult, error) {
-	basedn := fmt.Sprintf("ou=%s,%s", appId, conn.RoleBaseDN)
-	logging.Debug().Str("basedn", basedn).Str("filter", filter).Msg("will search roles")
-	return conn.searchBase(basedn, filter, attrs)
-}
-
-func (conn *ldapConn) searchBase(basedn, filter string, attrs []string) (*ldaplib.SearchResult, error) {
+func (c *conn) searchBase(basedn, filter string, attrs []string) (*ldaplib.SearchResult, error) {
 	req := ldaplib.NewSearchRequest(basedn, ldaplib.ScopeWholeSubtree, ldaplib.NeverDerefAliases, 0, 0, false, filter, attrs, nil)
-	res, err := conn.Search(req)
+	res, err := c.Search(req)
 	if err != nil {
 		if ldapErr, ok := err.(*ldaplib.Error); ok && ldapErr.ResultCode == ldaplib.LDAPResultNoSuchObject {
 			return nil, errors.Wrap(err, "search failed (probably due to bad `BaseDN`)")
@@ -88,21 +74,48 @@ func (conn *ldapConn) searchBase(basedn, filter string, attrs []string) (*ldapli
 	return res, nil
 }
 
-func (conn *ldapConn) bind(bindDN, password string) error {
-	return conn.Bind(bindDN, password)
+type client struct {
+	ctx  context.Context
+	cfg  *Config
+	conn ConnInterface
+
+	appId string
 }
 
-func bind(client Client, bindDN, password string) error {
-	err := client.bind(bindDN, password)
+func (cfg *Config) NewClientWithContext(ctx context.Context) *client {
+	return &client{
+		ctx:  ctx,
+		cfg:  cfg,
+		conn: new(conn),
+	}
+}
+
+func (c *client) WithAppId(appId string) *client {
+	c.appId = appId
+	return c
+}
+
+func (c *client) searchUser(filter string, attrs []string) (*ldaplib.SearchResult, error) {
+	return c.conn.searchBase(c.cfg.Basedn, filter, attrs)
+}
+
+func (c *client) searchRoles(filter string, attrs []string) (*ldaplib.SearchResult, error) {
+	basedn := fmt.Sprintf("ou=%s,%s", c.appId, c.cfg.RoleBaseDN)
+	logging.Debug().Str("basedn", basedn).Str("filter", filter).Msg("will search roles")
+	return c.conn.searchBase(basedn, filter, attrs)
+}
+
+func (c *client) bind(bindDN, password string) error {
+	err := c.conn.Bind(bindDN, password)
 	if ldapErr, ok := err.(*ldaplib.Error); ok && ldapErr.ResultCode == ldaplib.LDAPResultInvalidCredentials {
 		return ErrInvalidCredentials
 	}
 	return err
 }
 
-func inAppRole(client Client, userDN, appId string) error {
+func (c *client) inAppRole(userDN string) error {
 	filter := fmt.Sprintf(roleFilter, userDN)
-	res, err := client.searchRoles(filter, appId, []string{"cn"})
+	res, err := c.searchRoles(filter, []string{"cn"})
 	if err != nil {
 		return errors.Wrap(err, "while searching roles")
 	}
@@ -112,8 +125,8 @@ func inAppRole(client Client, userDN, appId string) error {
 	return nil
 }
 
-func findUserDN(client Client, username string) (string, error) {
-	entry, err := findUserDetails(client, username, make([]string, 0))
+func (c *client) findUserDN(username string) (string, error) {
+	entry, err := c.findUserDetails(username, make([]string, 0))
 	if err != nil {
 		return "", err
 	}
@@ -121,9 +134,9 @@ func findUserDN(client Client, username string) (string, error) {
 	return entry["dn"], nil
 }
 
-func findUserDetails(client Client, username string, attrs []string) (map[string]string, error) {
+func (c *client) findUserDetails(username string, attrs []string) (map[string]string, error) {
 	filter := fmt.Sprintf(userFilter, username)
-	res, err := client.searchUser(filter, attrs)
+	res, err := c.searchUser(filter, attrs)
 	if err != nil {
 		return nil, err
 	}
@@ -146,79 +159,44 @@ func findUserDetails(client Client, username string, attrs []string) (map[string
 	return entries[0], nil
 }
 
-func (cfg *Config) IsAuthorized(ctx context.Context, username, password, appId string) error {
-	conn := new(ldapConn)
-	conn.Init(cfg)
-	if err := conn.OpenConn(ctx); err != nil {
+func (c *client) IsAuthorized(username, password string) error {
+	if err := c.conn.openConn(c.ctx, c.cfg.Endpoint, c.cfg.Tls); err != nil {
 		return err
 	}
-	defer conn.Close()
-	return isAuthorized(conn, username, password, appId)
-}
-
-func isAuthorized(cli Client, username, password, appId string) error {
-	dn, err := findUserDN(cli, username)
+	defer c.conn.Close()
+	dn, err := c.findUserDN(username)
 	if err != nil {
 		return err
 	}
-	if err := bind(cli, dn, password); err != nil {
+	if err := c.bind(dn, password); err != nil {
 		return err
 	}
-	if err := inAppRole(cli, dn, appId); err != nil {
+	if err := c.inAppRole(dn); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (cfg *Config) FindOIDCClaims(ctx context.Context, subject string) (map[string]string, error) {
-	conn := new(ldapConn)
-	conn.Init(cfg)
-	if err := conn.OpenConn(ctx); err != nil {
+func (c *client) FindOIDCClaims(subject string) (map[string]string, error) {
+	if err := c.conn.openConn(c.ctx, c.cfg.Endpoint, c.cfg.Tls); err != nil {
 		return nil, err
 	}
-	defer conn.Close()
-	return cfg.findOIDCClaims(conn, subject)
-}
+	defer c.conn.Close()
 
-func (cfg *Config) findOIDCClaims(client Client, subject string) (map[string]string, error) {
 	attrs := make([]string, 0)
-	for ldapAttrName, _ := range cfg.attrsMap() {
+	for ldapAttrName, _ := range c.cfg.attrsMap() {
 		attrs = append(attrs, ldapAttrName)
 	}
-	details, err := findUserDetails(client, subject, attrs)
+	details, err := c.findUserDetails(subject, attrs)
 	if err != nil {
 		return nil, err
 	}
 	claims := make(map[string]string)
 
-	for ldapAttr, oidcAttr := range cfg.attrsMap() {
+	for ldapAttr, oidcAttr := range c.cfg.attrsMap() {
 		if value, ok := details[ldapAttr]; ok {
 			claims[oidcAttr] = value
 		}
 	}
 	return claims, nil
 }
-
-// func (c *Config) FindOIDCClaims(ctx context.Context, subject string) (map[string]interface{}, error) {
-// conn, err := c.Open(ctx)
-// if err != nil {
-// 	return nil, errors.Wrap(err, "trying to open connection failed")
-// }
-// defer conn.Close()
-// attrs := make([]string, len(c.Attrs))
-// for ldapAttrName, _ := range c.attrsMap() {
-// 	attrs = append(attrs, ldapAttrName)
-// }
-// details, err := conn.findUserDetails(subject, attrs)
-// if err != nil {
-// 	return nil, err
-// }
-// claims := make(map[string]string)
-
-// for ldapAttr, oidcAttr := range c.attrsMap() {
-// 	if value, ok := details[ldapAttr]; ok {
-// 		claims[oidcAttr] = value
-// 	}
-// }
-// return nil, nil
-// }

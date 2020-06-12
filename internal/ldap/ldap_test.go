@@ -1,6 +1,7 @@
 package ldap
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -11,10 +12,6 @@ import (
 	ldaplib "gopkg.in/ldap.v2"
 )
 
-// test
-//  utilisateur non trouvé
-//  utilisateur trouvé mais error de mot de passe
-//  utilisateur trouvé et bon mot de passe
 func TestIsAuthorized(t *testing.T) {
 	var (
 		username = "titi"
@@ -22,8 +19,9 @@ func TestIsAuthorized(t *testing.T) {
 		password = "secret"
 	)
 	t.Run("invalid credential", func(t *testing.T) {
-		moq := new(fakeClient)
-		moq.On("searchUser",
+		c, moq := makeClient(nil)
+		moq.On("searchBase",
+			"ou=users",
 			fmt.Sprintf(userFilter, username),
 			make([]string, 0),
 		).Return(
@@ -33,22 +31,23 @@ func TestIsAuthorized(t *testing.T) {
 			nil,
 		)
 
-		moq.On("bind",
+		moq.On("Bind",
 			dn,
 			password,
 		).Return(
 			ldaplib.NewError(ldaplib.LDAPResultInvalidCredentials, errors.New("oups")),
 		)
 
-		err := isAuthorized(moq, username, password, "client-id")
+		err := c.IsAuthorized(username, password)
 		if assert.Error(t, err) {
 			assert.Equal(t, ErrInvalidCredentials, err)
 		}
 	})
 
 	t.Run("user not found", func(t *testing.T) {
-		moq := new(fakeClient)
-		moq.On("searchUser",
+		c, moq := makeClient(nil)
+		moq.On("searchBase",
+			"ou=users",
 			fmt.Sprintf(userFilter, username),
 			make([]string, 0),
 		).Return(
@@ -56,15 +55,16 @@ func TestIsAuthorized(t *testing.T) {
 			nil,
 		)
 
-		err := isAuthorized(moq, username, password, "client-id")
+		err := c.IsAuthorized(username, password)
 		if assert.Error(t, err) {
 			assert.Equal(t, ErrUserNotFound, err)
 		}
 	})
 
 	t.Run("user not in group", func(t *testing.T) {
-		moq := new(fakeClient)
-		moq.On("searchUser",
+		c, moq := makeClient(nil)
+		moq.On("searchBase",
+			"ou=users",
 			fmt.Sprintf(userFilter, username),
 			make([]string, 0),
 		).Return(
@@ -73,28 +73,29 @@ func TestIsAuthorized(t *testing.T) {
 			}),
 			nil,
 		)
-		moq.On("searchRoles",
+		moq.On("searchBase",
+			"ou=client-id,ou=groups",
 			fmt.Sprintf(roleFilter, dn),
-			"client-id",
 			[]string{"cn"},
 		).Return(
 			makeLdapResult([]map[string]string{}),
 			nil,
 		)
-		moq.On("bind",
+		moq.On("Bind",
 			dn,
 			password,
 		).Return(nil)
 
-		err := isAuthorized(moq, username, password, "client-id")
+		err := c.IsAuthorized(username, password)
 		if assert.Error(t, err) {
 			assert.Equal(t, ErrUnauthorize, err)
 		}
 	})
 
 	t.Run("everything ok", func(t *testing.T) {
-		moq := new(fakeClient)
-		moq.On("searchUser",
+		c, moq := makeClient(nil)
+		moq.On("searchBase",
+			"ou=users",
 			fmt.Sprintf(userFilter, username),
 			make([]string, 0),
 		).Return(
@@ -103,9 +104,9 @@ func TestIsAuthorized(t *testing.T) {
 			}),
 			nil,
 		)
-		moq.On("searchRoles",
+		moq.On("searchBase",
+			"ou=client-id,ou=groups",
 			fmt.Sprintf(roleFilter, dn),
-			"client-id",
 			[]string{"cn"},
 		).Return(
 			makeLdapResult([]map[string]string{
@@ -113,12 +114,12 @@ func TestIsAuthorized(t *testing.T) {
 			}),
 			nil,
 		)
-		moq.On("bind",
+		moq.On("Bind",
 			dn,
 			password,
 		).Return(nil)
 
-		err := isAuthorized(moq, username, password, "client-id")
+		err := c.IsAuthorized(username, password)
 		assert.NoError(t, err)
 	})
 }
@@ -132,21 +133,23 @@ func TestOIDCClaims(t *testing.T) {
 		Attrs: []string{"name:name", "sn:family_name"},
 	}
 	t.Run("user not found", func(t *testing.T) {
-		moq := new(fakeClient)
-		moq.On("searchUser",
+		c, moq := makeClient(&cfg)
+		moq.On("searchBase",
+			"ou=users",
 			fmt.Sprintf(userFilter, username),
 			[]string{"name", "sn"},
 		).Return(
 			makeLdapResult(make([]map[string]string, 0)),
 			nil,
 		)
-		_, err := cfg.findOIDCClaims(moq, username)
+		_, err := c.FindOIDCClaims(username)
 		assert.Equal(t, ErrUserNotFound, err)
 	})
 
 	t.Run("everything ok", func(t *testing.T) {
-		moq := new(fakeClient)
-		moq.On("searchUser",
+		c, moq := makeClient(&cfg)
+		moq.On("searchBase",
+			"ou=users",
 			fmt.Sprintf(userFilter, username),
 			[]string{"name", "sn"},
 		).Return(
@@ -155,7 +158,7 @@ func TestOIDCClaims(t *testing.T) {
 			}),
 			nil,
 		)
-		claims, err := cfg.findOIDCClaims(moq, username)
+		claims, err := c.FindOIDCClaims(username)
 		assert.NoError(t, err)
 		expected := map[string]string{
 			"name":        "Titi",
@@ -184,26 +187,47 @@ func makeLdapResult(entries []map[string]string) *ldaplib.SearchResult {
 	return &result
 }
 
-type fakeClient struct {
+type fakeConn struct {
 	mock.Mock
 }
 
-func (c *fakeClient) searchRoles(filter, appId string, attrs []string) (*ldaplib.SearchResult, error) {
-	if attrs != nil {
-		sort.Strings(attrs)
+func makeClient(cfg *Config) (client, *fakeConn) {
+	moq := new(fakeConn)
+	if cfg == nil {
+		cfg = new(Config)
 	}
-	args := c.Called(filter, appId, attrs)
-	return args.Get(0).(*ldaplib.SearchResult), args.Error(1)
+	if cfg.RoleBaseDN == "" {
+		cfg.RoleBaseDN = "ou=groups"
+	}
+	if cfg.Basedn == "" {
+		cfg.Basedn = "ou=users"
+	}
+	ctx := context.Background()
+	moq.On("openConn", ctx, "", false).Return(nil)
+	moq.On("Close").Return()
+	return client{
+		ctx:   ctx,
+		appId: "client-id",
+		cfg:   cfg,
+		conn:  moq,
+	}, moq
 }
 
-func (c *fakeClient) searchUser(filter string, attrs []string) (*ldaplib.SearchResult, error) {
+func (c *fakeConn) openConn(ctx context.Context, endpoint string, istls bool) error {
+	args := c.Called(ctx, endpoint, istls)
+	return args.Error(0)
+}
+func (c *fakeConn) Close() {
+	c.Called()
+}
+func (c *fakeConn) searchBase(basedn, filter string, attrs []string) (*ldaplib.SearchResult, error) {
 	if attrs != nil {
 		sort.Strings(attrs)
 	}
-	args := c.Called(filter, attrs)
+	args := c.Called(basedn, filter, attrs)
 	return args.Get(0).(*ldaplib.SearchResult), args.Error(1)
 }
-func (c *fakeClient) bind(bindDN, password string) error {
-	args := c.Called(bindDN, password)
+func (c *fakeConn) Bind(username, password string) error {
+	args := c.Called(username, password)
 	return args.Error(0)
 }

@@ -109,7 +109,10 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		ctx.Data["client_id"] = clientId
 		ctx.Data["client_name"] = clientName
 
-		switch err := ldapcfg.IsAuthorized(ctx.Req.Context(), username, password, clientId); errors.Cause(err) {
+		err := ldapcfg.NewClientWithContext(ctx.Req.Context()).
+			WithAppId(clientId).
+			IsAuthorized(username, password)
+		switch err {
 		case nil:
 			remember := ctx.Query("rememberme") != ""
 			// XXX `subject` parameter could be either email or uid is this a problem?
@@ -175,7 +178,9 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 			ctx.Error(http.StatusInternalServerError, "internal server error")
 			return
 		}
-		claims, err := ldapcfg.FindOIDCClaims(ctx.Req.Context(), resp.Subject)
+		claims, err := ldapcfg.NewClientWithContext(ctx.Req.Context()).
+			WithAppId(resp.Client.Id).
+			FindOIDCClaims(resp.Subject)
 		claims = hydra.FilterClaims(&cfg.Hydra, claims, resp.RequestedScopes)
 		redirectURL, err := hydra.AcceptConsentRequest(
 			ctx.Req.Context(),
