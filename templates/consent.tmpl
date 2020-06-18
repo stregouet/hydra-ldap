@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ .Title }}</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="bg-gray-100">
+  <div class="m-auto w-1/2 pt-8">
+    <form method="POST" action="{{ .login_url }}" class="bg-white p-8 shadow-lg flex flex-col justify-between">
+      <h1 class="text-3xl mb-4">Single Sign On</h1>
+      {{ if .error }}
+        <pre>
+        {{ .msg }}
+        </pre>
+      {{ end }}
+      <span>
+        &ldquo;{{ .client_name }}&rdquo; is asking your authorization to access to
+      </span>
+      <input type="hidden" name="_csrf" value="{{ .csrf_token }}">
+      <input type="hidden" name="challenge" value="{{ .challenge }}">
+      <input type="hidden" name="client_id" value="{{ .client_id }}">
+      <input type="hidden" name="client_name" value="{{ .client_name }}">
+      <input type="hidden" name="subject" value="{{ .subject }}">
+      <ul class="ml-8 mb-4">
+        <input type="hidden" name="scopes" value="{{ .scopes }}">
+        {{ range $scope := .scope_labels }}
+        <li class="list-disc">
+          {{ $scope }}
+        </li>
+        {{ end }}
+      </ul>
+      <label class="flex capitalize">
+        <input type="checkbox" name="rememberme" class="align-bottom mt-1 mr-2 outline-none">
+        remember me
+      </label>
+
+      <input type="submit" value="OK" class="uppercase my-2 p-2 cursor-pointer bg-blue-500 text-blue-100">
+    </form>
+  </div>
+</body>
+</html>

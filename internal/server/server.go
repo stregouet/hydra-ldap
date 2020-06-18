@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/go-macaron/csrf"
 	"github.com/go-macaron/session"
@@ -154,7 +155,7 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		}
 	}).Name("login_form")
 
-	m.Combo("/auth/consent").Get(func(ctx *macaron.Context, ldapcfg *ldap.Config) {
+	m.Combo("/auth/consent").Get(func(ctx *macaron.Context, x csrf.CSRF, ldapcfg *ldap.Config) {
 		l := fromReq(ctx)
 		challenge := ctx.Query("consent_challenge")
 		if challenge == "" {
@@ -183,19 +184,82 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 			ctx.Error(http.StatusInternalServerError, "internal server error")
 			return
 		}
+
+		if resp.Skip {
+			clientId := resp.Client.Id
+			subject := resp.Subject
+			scopes := resp.RequestedScopes
+
+			claims, err := ldapcfg.NewClientWithContext(ctx.Req.Context()).
+				WithAppId(clientId).
+				FindOIDCClaims(subject)
+			switch errors.Cause(err) {
+			case nil:
+				break
+			case ldap.ErrUnauthorize:
+				l.Debug().Str("challenge", challenge).Msg("unable to authorize during consent flow")
+				ctx.Data["error"] = true
+				ctx.Data["msg"] = fmt.Sprintf("user `%s` is not authorized to access this app", subject)
+				ctx.HTML(http.StatusUnauthorized, "message")
+				return
+			default:
+				l.Error().Err(err).Str("challenge", challenge).
+					Msg("error fetching claim from ldap")
+				ctx.Error(http.StatusInternalServerError, "internal server error")
+				return
+			}
+			claims = hydra.FilterClaims(&cfg.Hydra, claims, scopes)
+
+			redirectURL, err := hydra.AcceptConsentRequest(
+				ctx.Req.Context(),
+				&cfg.Hydra,
+				challenge,
+				false,
+				scopes,
+				claims,
+			)
+			if err != nil {
+				l.Error().Str("challenge", challenge).Err(err).Msg("error making accept consent request against hydra ")
+				ctx.Error(http.StatusInternalServerError, "internal server error")
+				return
+			} else {
+				l.Info().Str("challenge", challenge).Msg("login UI was skipped")
+				ctx.Redirect(redirectURL, http.StatusFound)
+				return
+			}
+		}
+
 		ctx.Data["Title"] = "login-sso"
+		ctx.Data["csrf_token"] = x.GetToken()
+		ctx.Data["challenge"] = challenge
+		ctx.Data["login_url"] = ctx.URLFor("consent_form")
+		ctx.Data["client_id"] = resp.Client.Id
 		ctx.Data["client_name"] = resp.Client.Name
+		ctx.Data["subject"] = resp.Subject
+		ctx.Data["scopes"] = strings.Join(resp.RequestedScopes, ",")
+		ctx.Data["scope_labels"] = resp.RequestedScopes
+		ctx.HTML(200, "consent")
+	}).Post(csrf.Validate, func(ctx *macaron.Context, x csrf.CSRF, ldapcfg *ldap.Config) {
+		l := fromReq(ctx)
+		challenge := ctx.Query("challenge")
+		clientId := ctx.Query("client_id")
+		clientName := ctx.Query("client_name")
+		subject := ctx.Query("subject")
+		scopes := strings.Split(ctx.Query("scopes"), ",")
+
+		ctx.Data["Title"] = "login-sso"
+		ctx.Data["client_name"] = clientName
 
 		claims, err := ldapcfg.NewClientWithContext(ctx.Req.Context()).
-			WithAppId(resp.Client.Id).
-			FindOIDCClaims(resp.Subject)
+			WithAppId(clientId).
+			FindOIDCClaims(subject)
 		switch errors.Cause(err) {
 		case nil:
 			break
 		case ldap.ErrUnauthorize:
 			l.Debug().Str("challenge", challenge).Msg("unable to authorize during consent flow")
 			ctx.Data["error"] = true
-			ctx.Data["msg"] = fmt.Sprintf("user `%s` is not authorized to access this app", resp.Subject)
+			ctx.Data["msg"] = fmt.Sprintf("user `%s` is not authorized to access this app", subject)
 			ctx.HTML(http.StatusUnauthorized, "message")
 			return
 		default:
@@ -204,13 +268,14 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 			ctx.Error(http.StatusInternalServerError, "internal server error")
 			return
 		}
-		claims = hydra.FilterClaims(&cfg.Hydra, claims, resp.RequestedScopes)
+		remember := ctx.Query("rememberme") != ""
+		claims = hydra.FilterClaims(&cfg.Hydra, claims, scopes)
 		redirectURL, err := hydra.AcceptConsentRequest(
 			ctx.Req.Context(),
 			&cfg.Hydra,
 			challenge,
-			!resp.Skip,
-			resp.RequestedScopes,
+			remember,
+			scopes,
 			claims,
 		)
 		if err != nil {
@@ -244,7 +309,7 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 				ctx.Data["error"] = true
 			} else {
 				ctx.Data["sessions"] = consentSess
-		    ctx.Data["csrf_token"] = x.GetToken()
+				ctx.Data["csrf_token"] = x.GetToken()
 			}
 		}
 		ctx.HTML(200, "dashboard")
