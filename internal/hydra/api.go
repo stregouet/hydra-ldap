@@ -48,9 +48,9 @@ type reqInfo struct {
 	challenge string
 }
 
-type httpClient struct {
-	cfg *Config
-	ctx context.Context
+type HttpClient struct {
+	Cfg *Config
+	Ctx context.Context
 }
 
 type httpClientInterface interface {
@@ -59,12 +59,12 @@ type httpClientInterface interface {
 	getContext() context.Context
 }
 
-func (client *httpClient) getContext() context.Context {
-	return client.ctx
+func (client *HttpClient) getContext() context.Context {
+	return client.Ctx
 }
 
-func (client *httpClient) get(u *url.URL) (*http.Response, error) {
-	fullUrl := client.cfg.ParsedUrl().ResolveReference(u)
+func (client *HttpClient) get(u *url.URL) (*http.Response, error) {
+	fullUrl := client.Cfg.ParsedUrl().ResolveReference(u)
 	r, err := http.NewRequestWithContext(client.getContext(), http.MethodGet, fullUrl.String(), nil)
 	if err != nil {
 		return nil, err
@@ -73,8 +73,8 @@ func (client *httpClient) get(u *url.URL) (*http.Response, error) {
 	return http.DefaultClient.Do(r)
 }
 
-func (client *httpClient) putJSON(u *url.URL, body io.Reader) (*http.Response, error) {
-	fullUrl := client.cfg.ParsedUrl().ResolveReference(u)
+func (client *HttpClient) putJSON(u *url.URL, body io.Reader) (*http.Response, error) {
+	fullUrl := client.Cfg.ParsedUrl().ResolveReference(u)
 	r, err := http.NewRequestWithContext(client.getContext(), http.MethodPut, fullUrl.String(), body)
 	if err != nil {
 		return nil, err
@@ -128,7 +128,7 @@ func call(c httpClientInterface, info *reqInfo, jsonReq interface{}, jsonResp in
 
 func getRequest(ctx context.Context, cfg *Config, info *reqInfo) (*HydraResp, error) {
 	var hr HydraResp
-	client := &httpClient{cfg, ctx}
+	client := &HttpClient{cfg, ctx}
 	info.reqVerb = GET_VERB
 	if err := call(client, info, nil, &hr); err != nil {
 		return nil, err
@@ -140,7 +140,7 @@ func acceptRequest(ctx context.Context, cfg *Config, info *reqInfo, data interfa
 	var rs struct {
 		RedirectTo string `json:"redirect_to"`
 	}
-	client := &httpClient{cfg, ctx}
+	client := &HttpClient{cfg, ctx}
 	info.reqVerb = ACCEPT_VERB
 	if err := call(client, info, data, &rs); err != nil {
 		return "", err

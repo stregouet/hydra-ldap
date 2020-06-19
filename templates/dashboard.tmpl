@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ .Title }}</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="bg-gray-100">
+  <div class="m-auto w-1/2 pt-8">
+    {{ if .error }}
+      <pre>
+      {{ .msg }}
+      </pre>
+    {{ end }}
+    {{ if .user }}
+      {{ $csrf := .csrf_token }}
+      <div class="flex justify-between">
+        <span>
+          hello <i>{{ .user }}</i>, you've granted access to the following apps:
+        </span>
+        <a href="/logout">
+          logout
+        </a>
+      </div>
+      <ul class="m-4">
+      {{ range .sessions }}
+       <li class="bg-white shadow-lg p-8 my-2">
+         <div class="flex justify-between">
+           <span>
+            <b>{{ .ConsentRequest.Client.Name }}</b>
+            with followings scopes
+           </span>
+          <form method="POST" action="/revoke/{{ .ConsentRequest.Client.Id }}" >
+            <input type="hidden" name="_csrf" value="{{ $csrf }}">
+            <input title="revoke access for this app" type="submit" value="X" class="bg-white p-2 cursor-pointer" />
+          </form>
+         </div>
+          <ul class="ml-8 mt-4">
+            {{ range .GrantScope }}
+            <li class="list-disc">
+              {{ . }}
+            </li>
+            {{ end }}
+          </ul>
+<!--
+         <ul class="w-full">
+           <li class="flex">
+             <div class="w-1/4">App name</div>
+             <div class="w-3/4">{{  .ConsentRequest.Client.Name }}</div>
+           </li>
+           <li class="flex">
+             <div class="w-1/4">scope</div>
+             <div class="w-3/4">{{  .GrantScope }}</div>
+           </li>
+         </ul>
+         -->
+
+       </li>
+      {{ end }}
+      </ul>
+    {{ else }}
+      no current user you should first <a href="/login">login</a> to see something here
+    {{ end }}
+  </div>
+</body>
+</html>

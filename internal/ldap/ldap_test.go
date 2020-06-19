@@ -2,11 +2,11 @@ package ldap
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"testing"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	ldaplib "gopkg.in/ldap.v2"
@@ -90,7 +90,7 @@ func TestIsAuthorized(t *testing.T) {
 
 		err := c.IsAuthorized(username, password)
 		if assert.Error(t, err) {
-			assert.Equal(t, ErrUnauthorize, err)
+			assert.Equal(t, ErrUnauthorize, errors.Cause(err))
 		}
 	})
 
