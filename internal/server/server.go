@@ -1,26 +1,16 @@
 package server
 
 import (
-	"fmt"
-	"net/http"
 	"os"
-	"strings"
 
 	"github.com/go-macaron/csrf"
 	"github.com/go-macaron/session"
-	"github.com/pkg/errors"
 	"gopkg.in/macaron.v1"
 
-	// "github.com/markbates/goth"
-	// "github.com/markbates/goth/gothic"
-	// "github.com/markbates/goth/providers/openidConnect"
-
 	"github.com/stregouet/hydra-ldap/internal/config"
-	"github.com/stregouet/hydra-ldap/internal/hydra"
-	hydraSess "github.com/stregouet/hydra-ldap/internal/hydra/session"
-	"github.com/stregouet/hydra-ldap/internal/ldap"
 	"github.com/stregouet/hydra-ldap/internal/logging"
 	"github.com/stregouet/hydra-ldap/internal/oidc"
+	"github.com/stregouet/hydra-ldap/internal/server/routes"
 )
 
 func Start(cfg *config.Config) {
@@ -48,242 +38,15 @@ func setupMiddlewares(m *macaron.Macaron) {
 }
 
 func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
-	m.Combo("/auth/login").Get(func(ctx *macaron.Context, x csrf.CSRF) {
-		l := fromReq(ctx)
-		challenge := ctx.Query("login_challenge")
-		if challenge == "" {
-			l.Info().Msg("missing login challenge")
-			ctx.Error(http.StatusBadRequest, "missing login challenge")
-			return
-		}
-		resp, err := hydra.GetLoginRequest(ctx.Req.Context(), &cfg.Hydra, challenge)
-		switch errors.Cause(err) {
-		case nil:
-			break
-		case hydra.ErrChallengeNotFound:
-			l.Error().Err(err).Str("challenge", challenge).Msg("Unknown login challenge in the OAuth2 provider ")
-			ctx.Error(http.StatusBadRequest, "unknown login challenge")
-			return
-		case hydra.ErrChallengeExpired:
-			l.Info().Err(err).Str("challenge", challenge).Msg("Login challenge has been used already in the OAuth2 provider")
-			ctx.Error(http.StatusBadRequest, "Login challenge has been used already")
-			return
-		default:
-			l.Error().Err(err).Str("challenge", challenge).Msg("Failed to initiate an OAuth2 login request")
-			ctx.Error(http.StatusInternalServerError, "internal server error")
-			return
-		}
+	m.Combo("/auth/login").
+		Get(routes.LoginGet(cfg)).
+		Post(csrf.Validate, routes.LoginPost(cfg)).
+		Name("login_form")
 
-		if resp.Skip {
-			redirectURL, err := hydra.AcceptLoginRequest(ctx.Req.Context(), &cfg.Hydra, false, resp.Subject, challenge)
-			if err != nil {
-				l.Error().Str("challenge", challenge).Err(err).Msg("error making accept login request against hydra ")
-				ctx.Error(http.StatusInternalServerError, "internal server error")
-				return
-			} else {
-				l.Info().Str("challenge", challenge).Msg("login UI was skipped")
-				ctx.Redirect(redirectURL, http.StatusFound)
-				return
-			}
-		}
-
-		ctx.Data["Title"] = "login-sso"
-		ctx.Data["csrf_token"] = x.GetToken()
-		ctx.Data["challenge"] = challenge
-		ctx.Data["login_url"] = ctx.URLFor("login_form")
-		ctx.Data["client_id"] = resp.Client.Id
-		ctx.Data["client_name"] = resp.Client.Name
-		ctx.HTML(200, "login")
-	}).Post(csrf.Validate, func(ctx *macaron.Context, x csrf.CSRF, ldapcfg *ldap.Config) {
-		l := fromReq(ctx)
-		challenge := ctx.Query("challenge")
-		username := ctx.Query("username")
-		password := ctx.Query("password")
-		clientId := ctx.Query("client_id")
-		clientName := ctx.Query("client_name")
-
-		if challenge == "" {
-			l.Info().Msg("missing login challenge")
-			ctx.Error(http.StatusBadRequest, "missing login challenge")
-			return
-		}
-
-		ctx.Data["Title"] = "login-sso"
-		ctx.Data["csrf_token"] = x.GetToken()
-		ctx.Data["challenge"] = challenge
-		ctx.Data["login_url"] = ctx.URLFor("login_form")
-		ctx.Data["client_id"] = clientId
-		ctx.Data["client_name"] = clientName
-
-		err := ldapcfg.NewClientWithContext(ctx.Req.Context()).
-			WithAppId(clientId).
-			IsAuthorized(username, password)
-		switch err {
-		case nil:
-			remember := ctx.Query("rememberme") != ""
-			// XXX `subject` parameter could be either email or uid is this a problem?
-			redirectURL, err := hydra.AcceptLoginRequest(
-				ctx.Req.Context(),
-				&cfg.Hydra,
-				remember,
-				username,
-				challenge,
-			)
-			if err != nil {
-				l.Error().Str("challenge", challenge).Err(err).Msg("error making accept login request against hydra ")
-				ctx.Data["error"] = true
-				ctx.Data["msg"] = err.Error()
-				ctx.HTML(http.StatusInternalServerError, "login")
-			} else {
-				ctx.Redirect(redirectURL, http.StatusFound)
-			}
-		case ldap.ErrUnauthorize:
-			l.Debug().Str("challenge", challenge).Msg("unable to authorize")
-			ctx.Data["error"] = true
-			ctx.Data["msg"] = fmt.Sprintf("user `%s` is not authorized to access this app", username)
-			ctx.HTML(http.StatusUnauthorized, "login")
-		case ldap.ErrUserNotFound, ldap.ErrInvalidCredentials:
-			l.Debug().Str("challenge", challenge).Msg("unable to authentificate")
-			ctx.Data["error"] = true
-			ctx.Data["msg"] = "bad username or password"
-			ctx.HTML(http.StatusUnauthorized, "login")
-		default:
-			l.Error().Str("challenge", challenge).Err(err).Msg("error trying to authentificate")
-			ctx.Data["error"] = true
-			ctx.Data["msg"] = err.Error()
-			ctx.HTML(http.StatusInternalServerError, "login")
-		}
-	}).Name("login_form")
-
-	m.Combo("/auth/consent").Get(func(ctx *macaron.Context, x csrf.CSRF, ldapcfg *ldap.Config) {
-		l := fromReq(ctx)
-		challenge := ctx.Query("consent_challenge")
-		if challenge == "" {
-			l.Info().Msg("missing consent challenge")
-			ctx.Error(http.StatusBadRequest, "missing consent challenge")
-			return
-		}
-
-		resp, err := hydra.GetConsentRequest(ctx.Req.Context(), &cfg.Hydra, challenge)
-		switch errors.Cause(err) {
-		case nil:
-			break
-		case hydra.ErrChallengeNotFound:
-			l.Error().Err(err).Str("challenge", challenge).
-				Msg("Unknown consent challenge in the OAuth2 provider ")
-			ctx.Error(http.StatusBadRequest, "unknown login challenge")
-			return
-		case hydra.ErrChallengeExpired:
-			l.Info().Err(err).Str("challenge", challenge).
-				Msg("Consent challenge has been used already in the OAuth2 provider")
-			ctx.Error(http.StatusBadRequest, "Login challenge has been used already")
-			return
-		default:
-			l.Error().Err(err).Str("challenge", challenge).
-				Msg("Failed to initiate an OAuth2 consent request")
-			ctx.Error(http.StatusInternalServerError, "internal server error")
-			return
-		}
-
-		if resp.Skip {
-			clientId := resp.Client.Id
-			subject := resp.Subject
-			scopes := resp.RequestedScopes
-
-			claims, err := ldapcfg.NewClientWithContext(ctx.Req.Context()).
-				WithAppId(clientId).
-				FindOIDCClaims(subject)
-			switch errors.Cause(err) {
-			case nil:
-				break
-			case ldap.ErrUnauthorize:
-				l.Debug().Str("challenge", challenge).Msg("unable to authorize during consent flow")
-				ctx.Data["error"] = true
-				ctx.Data["msg"] = fmt.Sprintf("user `%s` is not authorized to access this app", subject)
-				ctx.HTML(http.StatusUnauthorized, "message")
-				return
-			default:
-				l.Error().Err(err).Str("challenge", challenge).
-					Msg("error fetching claim from ldap")
-				ctx.Error(http.StatusInternalServerError, "internal server error")
-				return
-			}
-			claims = hydra.FilterClaims(&cfg.Hydra, claims, scopes)
-
-			redirectURL, err := hydra.AcceptConsentRequest(
-				ctx.Req.Context(),
-				&cfg.Hydra,
-				challenge,
-				false,
-				scopes,
-				claims,
-			)
-			if err != nil {
-				l.Error().Str("challenge", challenge).Err(err).Msg("error making accept consent request against hydra ")
-				ctx.Error(http.StatusInternalServerError, "internal server error")
-				return
-			} else {
-				l.Info().Str("challenge", challenge).Msg("login UI was skipped")
-				ctx.Redirect(redirectURL, http.StatusFound)
-				return
-			}
-		}
-
-		ctx.Data["Title"] = "login-sso"
-		ctx.Data["csrf_token"] = x.GetToken()
-		ctx.Data["challenge"] = challenge
-		ctx.Data["login_url"] = ctx.URLFor("consent_form")
-		ctx.Data["client_id"] = resp.Client.Id
-		ctx.Data["client_name"] = resp.Client.Name
-		ctx.Data["subject"] = resp.Subject
-		ctx.Data["scopes"] = strings.Join(resp.RequestedScopes, ",")
-		ctx.Data["scope_labels"] = resp.RequestedScopes
-		ctx.HTML(200, "consent")
-	}).Post(csrf.Validate, func(ctx *macaron.Context, x csrf.CSRF, ldapcfg *ldap.Config) {
-		l := fromReq(ctx)
-		challenge := ctx.Query("challenge")
-		clientId := ctx.Query("client_id")
-		clientName := ctx.Query("client_name")
-		subject := ctx.Query("subject")
-		scopes := strings.Split(ctx.Query("scopes"), ",")
-
-		ctx.Data["Title"] = "login-sso"
-		ctx.Data["client_name"] = clientName
-
-		claims, err := ldapcfg.NewClientWithContext(ctx.Req.Context()).
-			WithAppId(clientId).
-			FindOIDCClaims(subject)
-		switch errors.Cause(err) {
-		case nil:
-			break
-		case ldap.ErrUnauthorize:
-			l.Debug().Str("challenge", challenge).Msg("unable to authorize during consent flow")
-			ctx.Data["error"] = true
-			ctx.Data["msg"] = fmt.Sprintf("user `%s` is not authorized to access this app", subject)
-			ctx.HTML(http.StatusUnauthorized, "message")
-			return
-		default:
-			l.Error().Err(err).Str("challenge", challenge).
-				Msg("error fetching claim from ldap")
-			ctx.Error(http.StatusInternalServerError, "internal server error")
-			return
-		}
-		remember := ctx.Query("rememberme") != ""
-		claims = hydra.FilterClaims(&cfg.Hydra, claims, scopes)
-		redirectURL, err := hydra.AcceptConsentRequest(
-			ctx.Req.Context(),
-			&cfg.Hydra,
-			challenge,
-			remember,
-			scopes,
-			claims,
-		)
-		if err != nil {
-			l.Error().Str("challenge", challenge).Err(err).Msg("error making accept consent request against hydra ")
-			ctx.Error(http.StatusInternalServerError, "internal server error")
-		}
-		ctx.Redirect(redirectURL, http.StatusFound)
-	}).Name("consent_form")
+	m.Combo("/auth/consent").
+		Get(routes.ConsentGet(cfg)).
+		Post(csrf.Validate, routes.ConsentPost(cfg)).
+		Name("consent_form")
 
 	err := oidc.Initialize(
 		os.Getenv("OPENID_CONNECT_KEY"),
@@ -295,78 +58,11 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		logging.Error().Err(err).Msg("cannot initialize oauth client")
 	}
 
-	m.Get("/", func(ctx *macaron.Context, sess session.Store, x csrf.CSRF) {
-		l := fromReq(ctx)
-		ctx.Data["Title"] = "login-sso"
-		user := sess.Get("user")
-		if user != nil {
-			subject := user.(string)
-			ctx.Data["user"] = subject
-			consentSess, err := hydraSess.FetchConsentSessions(ctx.Req.Context(), &cfg.Hydra, subject)
-			if err != nil {
-				l.Error().Err(err).Msg("while trying to get sessions from hydra")
-				ctx.Data["msg"] = "error while trying to get sessions from hydra"
-				ctx.Data["error"] = true
-			} else {
-				ctx.Data["sessions"] = consentSess
-				ctx.Data["csrf_token"] = x.GetToken()
-			}
-		}
-		ctx.HTML(200, "dashboard")
-	})
+	m.Get("/", routes.SelfService(cfg))
 
-	m.Get("/login", func(ctx *macaron.Context, sess session.Store) {
-		url, err := oidc.BeginAuthHandler(ctx.Query("state"), sess)
-		if err != nil {
-			logging.Error().Err(err).Msg("cannot start oauth process")
-			ctx.Error(http.StatusInternalServerError, "internal server error")
-			return
-		}
-		ctx.Redirect(url, http.StatusFound)
-	})
-	m.Get("/logout", func(ctx *macaron.Context, sess session.Store) {
-		l := fromReq(ctx)
-		user := sess.Get("user")
-		if user != nil {
-			subject := user.(string)
-			err := hydraSess.Logout(ctx.Req.Context(), &cfg.Hydra, subject)
-			if err != nil {
-				l.Error().Err(err).Msg("while trying to invalidate user's hydra session")
-				ctx.Error(http.StatusInternalServerError, "internal server error")
-				return
-			}
-			if err := sess.Delete("user"); err != nil {
-				l.Error().Err(err).Msg("while trying to delete `user` from session")
-				ctx.Error(http.StatusInternalServerError, "internal server error")
-				return
-			}
-		}
-		ctx.Redirect("/", http.StatusSeeOther)
-	})
-	m.Get("/oidc/callback", func(ctx *macaron.Context, sess session.Store) {
-		claims, err := oidc.CompleteUserAuth(ctx.Query("code"), ctx.Query("state"), sess)
-		if err != nil {
-			logging.Error().Err(err).Msg("cannot complete auth user")
-			ctx.Error(http.StatusInternalServerError, "internal server error")
-			return
-		}
-		sess.Set("user", claims["sub"])
-		ctx.Redirect("/", http.StatusSeeOther)
-	})
+	m.Get("/login", routes.SelfServiceLogin(cfg))
+	m.Get("/logout", routes.SelfServiceLogout(cfg))
+	m.Get("/oidc/callback", routes.SelfServiceOauth(cfg))
 
-	m.Post("/revoke/:clientid", csrf.Validate, func(ctx *macaron.Context, x csrf.CSRF, sess session.Store) {
-		l := fromReq(ctx)
-		ctx.Data["Title"] = "login-sso"
-		user := sess.Get("user")
-		if user != nil {
-			subject := user.(string)
-			err := hydraSess.RevokeApp(ctx.Req.Context(), &cfg.Hydra, subject, ctx.Params(":clientid"))
-			if err != nil {
-				l.Error().Err(err).Msg("while trying to get sessions from hydra")
-				ctx.Error(http.StatusInternalServerError, "internal server error")
-				return
-			}
-		}
-		ctx.Redirect("/", http.StatusSeeOther)
-	})
+	m.Post("/revoke/:clientid", csrf.Validate, routes.SelfServiceRevoke(cfg))
 }

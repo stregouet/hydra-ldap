@@ -30,7 +30,3 @@ func zerologMiddleware(ctx *macaron.Context) {
 	}
 	evt.Str("uri", ctx.Req.RequestURI).Str("verb", ctx.Req.Method).Int("status", rw.Status()).Dur("duration", time.Since(start)).Msg("request ended")
 }
-
-func fromReq(ctx *macaron.Context) *zerolog.Logger {
-	return zerolog.Ctx(ctx.Req.Context())
-}
