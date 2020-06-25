@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -25,21 +26,8 @@ type ConsentSession struct {
 }
 
 func FetchConsentSessions(ctx context.Context, cfg *hydra.Config, subject string) ([]ConsentSession, error) {
-
-	client := &hydra.HttpClient{cfg, ctx}
-
 	urlPath := fmt.Sprintf("oauth2/auth/sessions/consent?subject=%s", url.QueryEscape(subject))
-	ref, err := url.Parse(urlPath)
-	if err != nil {
-		return nil, err
-	}
-	fullUrl := client.Cfg.ParsedUrl().ResolveReference(ref)
-	r, err := http.NewRequestWithContext(client.Ctx, http.MethodGet, fullUrl.String(), nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "while building http request for hydra server")
-	}
-
-	resp, err := http.DefaultClient.Do(r)
+	resp, err := httpDo(ctx, cfg, urlPath, http.MethodGet)
 	if err != nil {
 		return nil, errors.Wrap(err, "while requesting hydra server")
 	}
@@ -56,23 +44,10 @@ func FetchConsentSessions(ctx context.Context, cfg *hydra.Config, subject string
 }
 
 func RevokeApp(ctx context.Context, cfg *hydra.Config, subject, clientid string) error {
-	l := logging.FromCtx(ctx)
-	client := &hydra.HttpClient{cfg, ctx}
-
 	urlPath := fmt.Sprintf("oauth2/auth/sessions/consent?subject=%s&client=%s",
 		url.QueryEscape(subject),
 		url.QueryEscape(clientid))
-	ref, err := url.Parse(urlPath)
-	if err != nil {
-		return err
-	}
-	fullUrl := client.Cfg.ParsedUrl().ResolveReference(ref)
-	r, err := http.NewRequestWithContext(client.Ctx, http.MethodDelete, fullUrl.String(), nil)
-	if err != nil {
-		return errors.Wrap(err, "while building http request for hydra server")
-	}
-
-	resp, err := http.DefaultClient.Do(r)
+	resp, err := httpDo(ctx, cfg, urlPath, http.MethodDelete)
 	if err != nil {
 		return errors.Wrap(err, "while requesting hydra server")
 	}
@@ -80,43 +55,15 @@ func RevokeApp(ctx context.Context, cfg *hydra.Config, subject, clientid string)
 	if resp.StatusCode == 204 || resp.StatusCode == 201 {
 		return nil
 	}
-	var jsonResp struct {
-		Debug            string `json:debug`
-		Error            string `json:error`
-		ErrorDescription string `json:error_description`
+	if err := genericError(ctx, resp.Body); err != nil {
+		return err
 	}
-	dec := json.NewDecoder(resp.Body)
-	if err := dec.Decode(&jsonResp); err != nil {
-		return errors.Wrap(err, "while parsing of response body from hydra server")
-	}
-	l.Error().
-		Str("error", jsonResp.Error).
-		Str("debug", jsonResp.Debug).
-		Str("descr", jsonResp.ErrorDescription).
-		Msg("hydra sent error")
-	if jsonResp.Error != "" {
-		return errors.New(jsonResp.Error)
-	}
-
 	return fmt.Errorf("something bad happened when trying to revoke access for %s", clientid)
 }
 
 func Logout(ctx context.Context, cfg *hydra.Config, subject string) error {
-	l := logging.FromCtx(ctx)
-	client := &hydra.HttpClient{cfg, ctx}
-
 	urlPath := fmt.Sprintf("oauth2/auth/sessions/login?subject=%s", url.QueryEscape(subject))
-	ref, err := url.Parse(urlPath)
-	if err != nil {
-		return err
-	}
-	fullUrl := client.Cfg.ParsedUrl().ResolveReference(ref)
-	r, err := http.NewRequestWithContext(client.Ctx, http.MethodDelete, fullUrl.String(), nil)
-	if err != nil {
-		return errors.Wrap(err, "while building http request for hydra server")
-	}
-
-	resp, err := http.DefaultClient.Do(r)
+	resp, err := httpDo(ctx, cfg, urlPath, http.MethodDelete)
 	if err != nil {
 		return errors.Wrap(err, "while requesting hydra server")
 	}
@@ -124,13 +71,37 @@ func Logout(ctx context.Context, cfg *hydra.Config, subject string) error {
 	if resp.StatusCode == 204 || resp.StatusCode == 201 {
 		return nil
 	}
+	if err := genericError(ctx, resp.Body); err != nil {
+		return err
+	}
 
+	return fmt.Errorf("something bad happened when trying to invalidate subject session %s", subject)
+}
+
+func httpDo(ctx context.Context, cfg *hydra.Config, urlPath, method string) (*http.Response, error) {
+	client := &hydra.HttpClient{cfg, ctx}
+
+	ref, err := url.Parse(urlPath)
+	if err != nil {
+		return nil, errors.Wrap(err, "while parsing url")
+	}
+	fullUrl := client.Cfg.ParsedUrl().ResolveReference(ref)
+	r, err := http.NewRequestWithContext(client.Ctx, method, fullUrl.String(), nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "while building http request for hydra server")
+	}
+
+	return http.DefaultClient.Do(r)
+}
+
+func genericError(ctx context.Context, body io.ReadCloser) error {
+	l := logging.FromCtx(ctx)
 	var jsonResp struct {
 		Debug            string `json:debug`
 		Error            string `json:error`
 		ErrorDescription string `json:error_description`
 	}
-	dec := json.NewDecoder(resp.Body)
+	dec := json.NewDecoder(body)
 	if err := dec.Decode(&jsonResp); err != nil {
 		return errors.Wrap(err, "while parsing of response body from hydra server")
 	}
@@ -142,6 +113,5 @@ func Logout(ctx context.Context, cfg *hydra.Config, subject string) error {
 	if jsonResp.Error != "" {
 		return errors.New(jsonResp.Error)
 	}
-
-	return fmt.Errorf("something bad happened when trying to invalidate subject session %s", subject)
+	return nil
 }
