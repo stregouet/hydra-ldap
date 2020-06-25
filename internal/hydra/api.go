@@ -56,11 +56,22 @@ type HttpClient struct {
 type HttpClientInterface interface {
 	PutJSON(u *url.URL, body io.Reader) (*http.Response, error)
 	Get(u *url.URL) (*http.Response, error)
+	Delete(u *url.URL) (*http.Response, error)
 	GetContext() context.Context
 }
 
 func (client *HttpClient) GetContext() context.Context {
 	return client.Ctx
+}
+
+func (client *HttpClient) Delete(u *url.URL) (*http.Response, error) {
+	fullUrl := client.Cfg.ParsedUrl().ResolveReference(u)
+	r, err := http.NewRequestWithContext(client.GetContext(), http.MethodDelete, fullUrl.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return http.DefaultClient.Do(r)
 }
 
 func (client *HttpClient) Get(u *url.URL) (*http.Response, error) {
@@ -170,4 +181,26 @@ func checkResponse(resp *http.Response) error {
 		}
 		return fmt.Errorf("bad HTTP status code %d with message %q", resp.StatusCode, rs.Message)
 	}
+}
+
+func GenericError(ctx context.Context, body io.ReadCloser) error {
+	l := logging.FromCtx(ctx)
+	var jsonResp struct {
+		Debug            string `json:debug`
+		Error            string `json:error`
+		ErrorDescription string `json:error_description`
+	}
+	dec := json.NewDecoder(body)
+	if err := dec.Decode(&jsonResp); err != nil {
+		return errors.Wrap(err, "while parsing of response body from hydra server")
+	}
+	l.Error().
+		Str("error", jsonResp.Error).
+		Str("debug", jsonResp.Debug).
+		Str("descr", jsonResp.ErrorDescription).
+		Msg("hydra sent error")
+	if jsonResp.Error != "" {
+		return errors.New(jsonResp.Error)
+	}
+	return nil
 }

@@ -98,3 +98,8 @@ func (c *fakeClient) Get(u *url.URL) (*http.Response, error) {
 	args := c.Called(u)
 	return args.Get(0).(*http.Response), args.Error(1)
 }
+
+func (c *fakeClient) Delete(u *url.URL) (*http.Response, error) {
+	args := c.Called(u)
+	return args.Get(0).(*http.Response), args.Error(1)
+}

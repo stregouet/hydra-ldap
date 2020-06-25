@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -14,6 +13,8 @@ import (
 	"github.com/stregouet/hydra-ldap/internal/hydra"
 	"github.com/stregouet/hydra-ldap/internal/logging"
 )
+
+type reqType int
 
 type ConsentReq struct {
 	Client hydra.ClientInfo `json:client`
@@ -25,93 +26,101 @@ type ConsentSession struct {
 	ConsentRequest ConsentReq `json:"consent_request"`
 }
 
-func FetchConsentSessions(ctx context.Context, cfg *hydra.Config, subject string) ([]ConsentSession, error) {
-	urlPath := fmt.Sprintf("oauth2/auth/sessions/consent?subject=%s", url.QueryEscape(subject))
-	resp, err := httpDo(ctx, cfg, urlPath, http.MethodGet)
+type reqInfo struct {
+	reqType
+	subject  string
+	clientId string
+}
+
+const (
+	DEL_LOGIN_REQ   reqType = 0
+	DEL_CONSENT_REQ reqType = 1
+	GET_CONSENT_REQ reqType = 2
+)
+
+func (r *reqInfo) ReqPath() string {
+	if r.reqType == DEL_LOGIN_REQ {
+		return "login"
+	}
+	if r.reqType == DEL_CONSENT_REQ {
+		return "consent"
+	}
+	if r.reqType == GET_CONSENT_REQ {
+		return "consent"
+	}
+	return ""
+}
+
+func call(c hydra.HttpClientInterface, info *reqInfo, jsonResp interface{}) error {
+	l := logging.FromCtx(c.GetContext())
+	urlPath := fmt.Sprintf("oauth2/auth/sessions/%[1]s", info.ReqPath())
+	values := &url.Values{}
+	if info.subject != "" {
+		values.Set("subject", info.subject)
+	}
+	if info.clientId != "" {
+		values.Set("client", info.clientId)
+	}
+	urlPath = fmt.Sprintf("%s?%s", urlPath, values.Encode())
+
+	ref, err := url.Parse(urlPath)
 	if err != nil {
-		return nil, errors.Wrap(err, "while requesting hydra server")
+		return errors.Wrap(err, "while parsing url")
+	}
+	var (
+		resp    *http.Response
+		httperr error
+	)
+	if info.reqType == GET_CONSENT_REQ {
+		resp, httperr = c.Get(ref)
+	} else {
+		resp, httperr = c.Delete(ref)
+	}
+	if httperr != nil {
+		return errors.Wrap(httperr, "http request to hydra failed")
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("bad status code (%v) from hydra server", resp.StatusCode)
+	if resp.StatusCode >= 300 {
+		// error case, status code should be 2XX
+		if err := hydra.GenericError(c.GetContext(), resp.Body); err != nil {
+			return err
+		}
+		l.Debug().
+			Int("statuscode", resp.StatusCode).
+			Msgf("hydra sent error (reqinfo %#v)", info)
+		return fmt.Errorf("hydra sent error with statuscode %v", resp.StatusCode)
 	}
+	if jsonResp != nil {
+		dec := json.NewDecoder(resp.Body)
+		if err := dec.Decode(jsonResp); err != nil {
+			return errors.Wrap(err, "while parsing of response body from hydra server")
+		}
+	}
+	return nil
+}
+
+func FetchConsentSessions(ctx context.Context, cfg *hydra.Config, subject string) ([]ConsentSession, error) {
+	client := &hydra.HttpClient{cfg, ctx}
 	var sess []ConsentSession
-	dec := json.NewDecoder(resp.Body)
-	if err := dec.Decode(&sess); err != nil {
-		return nil, errors.Wrap(err, "while parsing of response body from hydra server")
+	err := call(client, &reqInfo{reqType: GET_CONSENT_REQ, subject: subject}, &sess)
+	if err != nil {
+		return nil, err
 	}
 	return Filter(sess), nil
 }
 
 func RevokeApp(ctx context.Context, cfg *hydra.Config, subject, clientid string) error {
-	urlPath := fmt.Sprintf("oauth2/auth/sessions/consent?subject=%s&client=%s",
-		url.QueryEscape(subject),
-		url.QueryEscape(clientid))
-	resp, err := httpDo(ctx, cfg, urlPath, http.MethodDelete)
-	if err != nil {
-		return errors.Wrap(err, "while requesting hydra server")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == 204 || resp.StatusCode == 201 {
-		return nil
-	}
-	if err := genericError(ctx, resp.Body); err != nil {
-		return err
-	}
-	return fmt.Errorf("something bad happened when trying to revoke access for %s", clientid)
+	return call(
+		&hydra.HttpClient{cfg, ctx},
+		&reqInfo{reqType: DEL_CONSENT_REQ, subject: subject, clientId: clientid},
+		nil,
+	)
 }
 
 func Logout(ctx context.Context, cfg *hydra.Config, subject string) error {
-	urlPath := fmt.Sprintf("oauth2/auth/sessions/login?subject=%s", url.QueryEscape(subject))
-	resp, err := httpDo(ctx, cfg, urlPath, http.MethodDelete)
-	if err != nil {
-		return errors.Wrap(err, "while requesting hydra server")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == 204 || resp.StatusCode == 201 {
-		return nil
-	}
-	if err := genericError(ctx, resp.Body); err != nil {
-		return err
-	}
-
-	return fmt.Errorf("something bad happened when trying to invalidate subject session %s", subject)
-}
-
-func httpDo(ctx context.Context, cfg *hydra.Config, urlPath, method string) (*http.Response, error) {
-	client := &hydra.HttpClient{cfg, ctx}
-
-	ref, err := url.Parse(urlPath)
-	if err != nil {
-		return nil, errors.Wrap(err, "while parsing url")
-	}
-	fullUrl := client.Cfg.ParsedUrl().ResolveReference(ref)
-	r, err := http.NewRequestWithContext(client.Ctx, method, fullUrl.String(), nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "while building http request for hydra server")
-	}
-
-	return http.DefaultClient.Do(r)
-}
-
-func genericError(ctx context.Context, body io.ReadCloser) error {
-	l := logging.FromCtx(ctx)
-	var jsonResp struct {
-		Debug            string `json:debug`
-		Error            string `json:error`
-		ErrorDescription string `json:error_description`
-	}
-	dec := json.NewDecoder(body)
-	if err := dec.Decode(&jsonResp); err != nil {
-		return errors.Wrap(err, "while parsing of response body from hydra server")
-	}
-	l.Error().
-		Str("error", jsonResp.Error).
-		Str("debug", jsonResp.Debug).
-		Str("descr", jsonResp.ErrorDescription).
-		Msg("hydra sent error")
-	if jsonResp.Error != "" {
-		return errors.New(jsonResp.Error)
-	}
-	return nil
+	return call(
+		&hydra.HttpClient{cfg, ctx},
+		&reqInfo{reqType: DEL_LOGIN_REQ, subject: subject},
+		nil,
+	)
 }

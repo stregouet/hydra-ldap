@@ -57,5 +57,5 @@ func TestFilterSession(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, expected, Filter(sess))
+	assert.ElementsMatch(t, expected, Filter(sess))
 }
