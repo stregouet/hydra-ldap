@@ -25,7 +25,7 @@ func TestGetRequest(t *testing.T) {
 	assert.NoError(t, err)
 	t.Run("challenge not found", func(t *testing.T) {
 		client := new(fakeClient)
-		client.On("get", ref).Return(
+		client.On("Get", ref).Return(
 			&http.Response{
 				Body:       newClosableBuffer(""),
 				StatusCode: 404,
@@ -39,7 +39,7 @@ func TestGetRequest(t *testing.T) {
 
 	t.Run("unknown error", func(t *testing.T) {
 		client := new(fakeClient)
-		client.On("get", ref).Return(
+		client.On("Get", ref).Return(
 			&http.Response{
 				Body:       newClosableBuffer(`{"error": "oups"}`),
 				StatusCode: 500,
@@ -54,7 +54,7 @@ func TestGetRequest(t *testing.T) {
 
 	t.Run("no error", func(t *testing.T) {
 		client := new(fakeClient)
-		client.On("get", ref).Return(
+		client.On("Get", ref).Return(
 			&http.Response{
 				Body:       newClosableBuffer(`{}`),
 				StatusCode: 200,
@@ -84,17 +84,17 @@ type fakeClient struct {
 	mock.Mock
 }
 
-func (c *fakeClient) getContext() context.Context {
+func (c *fakeClient) GetContext() context.Context {
 	return nil
 }
 
-func (c *fakeClient) putJSON(u *url.URL, body io.Reader) (*http.Response, error) {
+func (c *fakeClient) PutJSON(u *url.URL, body io.Reader) (*http.Response, error) {
 	args := c.Called(u, body)
 	return args.Get(0).(*http.Response), args.Error(1)
 
 }
 
-func (c *fakeClient) get(u *url.URL) (*http.Response, error) {
+func (c *fakeClient) Get(u *url.URL) (*http.Response, error) {
 	args := c.Called(u)
 	return args.Get(0).(*http.Response), args.Error(1)
 }

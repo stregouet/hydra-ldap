@@ -53,19 +53,19 @@ type HttpClient struct {
 	Ctx context.Context
 }
 
-type httpClientInterface interface {
-	putJSON(u *url.URL, body io.Reader) (*http.Response, error)
-	get(u *url.URL) (*http.Response, error)
-	getContext() context.Context
+type HttpClientInterface interface {
+	PutJSON(u *url.URL, body io.Reader) (*http.Response, error)
+	Get(u *url.URL) (*http.Response, error)
+	GetContext() context.Context
 }
 
-func (client *HttpClient) getContext() context.Context {
+func (client *HttpClient) GetContext() context.Context {
 	return client.Ctx
 }
 
-func (client *HttpClient) get(u *url.URL) (*http.Response, error) {
+func (client *HttpClient) Get(u *url.URL) (*http.Response, error) {
 	fullUrl := client.Cfg.ParsedUrl().ResolveReference(u)
-	r, err := http.NewRequestWithContext(client.getContext(), http.MethodGet, fullUrl.String(), nil)
+	r, err := http.NewRequestWithContext(client.GetContext(), http.MethodGet, fullUrl.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -73,9 +73,9 @@ func (client *HttpClient) get(u *url.URL) (*http.Response, error) {
 	return http.DefaultClient.Do(r)
 }
 
-func (client *HttpClient) putJSON(u *url.URL, body io.Reader) (*http.Response, error) {
+func (client *HttpClient) PutJSON(u *url.URL, body io.Reader) (*http.Response, error) {
 	fullUrl := client.Cfg.ParsedUrl().ResolveReference(u)
-	r, err := http.NewRequestWithContext(client.getContext(), http.MethodPut, fullUrl.String(), body)
+	r, err := http.NewRequestWithContext(client.GetContext(), http.MethodPut, fullUrl.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (client *HttpClient) putJSON(u *url.URL, body io.Reader) (*http.Response, e
 	return http.DefaultClient.Do(r)
 }
 
-func call(c httpClientInterface, info *reqInfo, jsonReq interface{}, jsonResp interface{}) error {
+func call(c HttpClientInterface, info *reqInfo, jsonReq interface{}, jsonResp interface{}) error {
 	urlPath := fmt.Sprintf("oauth2/auth/requests/%[1]s%[2]s?%[1]s_challenge=%[3]s",
 		info.reqType,
 		info.reqVerb,
@@ -106,10 +106,10 @@ func call(c httpClientInterface, info *reqInfo, jsonReq interface{}, jsonResp in
 			// convert buf into string only if necessary
 			logging.Debug().Str("data", buf.String()).Str("url", urlPath).Msg("will call hydra server")
 		}
-		resp, httperr = c.putJSON(ref, buf)
+		resp, httperr = c.PutJSON(ref, buf)
 	} else {
 		logging.Debug().Str("url", urlPath).Msg("will call hydra server")
-		resp, httperr = c.get(ref)
+		resp, httperr = c.Get(ref)
 	}
 
 	defer resp.Body.Close()
