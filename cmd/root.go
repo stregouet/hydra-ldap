@@ -10,6 +10,7 @@ import (
 
 	"github.com/stregouet/hydra-ldap/internal/config"
 	"github.com/stregouet/hydra-ldap/internal/logging"
+	"github.com/stregouet/hydra-ldap/internal/oidc"
 	"github.com/stregouet/hydra-ldap/internal/server"
 )
 
@@ -37,6 +38,9 @@ func Run(cfgFile string) {
 		panic(fmt.Sprintf("error in config %v", err))
 	}
 	logging.Setup(&c.Log, c.Dev)
+	if err := oidc.Setup(&c.SelfService); err != nil {
+		panic(fmt.Sprintf("cannot setup oauth client %v", err))
+	}
 	server.Start(&c)
 }
 

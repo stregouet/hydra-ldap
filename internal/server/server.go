@@ -9,7 +9,6 @@ import (
 
 	"github.com/stregouet/hydra-ldap/internal/config"
 	"github.com/stregouet/hydra-ldap/internal/logging"
-	"github.com/stregouet/hydra-ldap/internal/oidc"
 	"github.com/stregouet/hydra-ldap/internal/server/routes"
 )
 
@@ -46,16 +45,6 @@ func setupRoutes(m *macaron.Macaron, cfg *config.Config) {
 		Get(routes.ConsentGet(cfg)).
 		Post(csrf.Validate, routes.ConsentPost(cfg)).
 		Name("consent_form")
-
-	err := oidc.Initialize(
-		os.Getenv("OPENID_CONNECT_KEY"),
-		os.Getenv("OPENID_CONNECT_SECRET"),
-		"http://localhost:8080/oidc/callback",
-		os.Getenv("OPENID_CONNECT_DISCOVERY_URL"),
-	)
-	if err != nil {
-		logging.Error().Err(err).Msg("cannot initialize oauth client")
-	}
 
 	m.Get("/", routes.SelfService(cfg))
 

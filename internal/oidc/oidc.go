@@ -27,11 +27,9 @@ const (
 )
 
 type Client struct {
-	oauthCfg    *oauth2.Config
-	oidcCfg     *OpenIDConfig
-	secret      string
-	clientid    string
-	callbackurl string
+	oauthCfg *oauth2.Config
+	oidcCfg  *OpenIDConfig
+	cfg      *Config
 }
 
 type OpenIDConfig struct {
@@ -49,19 +47,15 @@ type OauthSession struct {
 
 var c Client
 
-func Initialize(clientid, secret, callbackurl, discoveryurl string) error {
-	c = Client{
-		clientid:    clientid,
-		secret:      secret,
-		callbackurl: callbackurl,
-	}
-	if err := c.getOpenIDConfig(discoveryurl); err != nil {
+func Setup(cfg *Config) error {
+	c = Client{cfg: cfg}
+	if err := c.getOpenIDConfig(); err != nil {
 		return err
 	}
 	c.oauthCfg = &oauth2.Config{
-		ClientID:     c.clientid,
-		ClientSecret: c.secret,
-		RedirectURL:  c.callbackurl,
+		ClientID:     c.cfg.ClientId,
+		ClientSecret: c.cfg.Secret,
+		RedirectURL:  c.cfg.CallbackUrl,
 		Endpoint: oauth2.Endpoint{
 			AuthURL:   c.oidcCfg.AuthEndpoint,
 			TokenURL:  c.oidcCfg.TokenEndpoint,
@@ -189,8 +183,8 @@ func setState(stateParam string) string {
 	return base64.URLEncoding.EncodeToString(nonceBytes)
 }
 
-func (c *Client) getOpenIDConfig(openIDAutoDiscoveryURL string) error {
-	res, err := http.Get(openIDAutoDiscoveryURL)
+func (c *Client) getOpenIDConfig() error {
+	res, err := http.Get(c.cfg.DiscoveryUrl)
 	if err != nil {
 		return err
 	}
@@ -242,15 +236,15 @@ func validateClaims(claims map[string]interface{}) error {
 	// TODO test à tester avec claims[aud] une string ou une liste de string
 	switch v := claims["aud"].(type) {
 	case string:
-		if v != c.clientid {
-			logging.Error().Str("token_id.aud", v).Str("clientId", c.clientid).Msg("mismatch audience")
+		if v != c.cfg.ClientId {
+			logging.Error().Str("token_id.aud", v).Str("clientId", c.cfg.ClientId).Msg("mismatch audience")
 			return errors.New("audience in token does not match client key")
 		}
 	case []interface{}:
 		found := false
 		dbg := make([]string, len(v))
 		for _, tokenIdAud := range v {
-			if tokenIdAud == c.clientid {
+			if tokenIdAud == c.cfg.ClientId {
 				found = true
 				break
 			} else {
@@ -258,7 +252,7 @@ func validateClaims(claims map[string]interface{}) error {
 			}
 		}
 		if !found {
-			logging.Error().Strs("token_id.aud", dbg).Str("clientId", c.clientid).Msg("mismatch audience")
+			logging.Error().Strs("token_id.aud", dbg).Str("clientId", c.cfg.ClientId).Msg("mismatch audience")
 			return errors.New("audience in token does not match client key")
 		}
 	default:
