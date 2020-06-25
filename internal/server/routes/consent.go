@@ -14,8 +14,8 @@ import (
 	"github.com/stregouet/hydra-ldap/internal/ldap"
 )
 
-func ConsentGet(cfg *config.Config) func(ctx *macaron.Context, x csrf.CSRF, ldapcfg *ldap.Config) {
-	return func(ctx *macaron.Context, x csrf.CSRF, ldapcfg *ldap.Config) {
+func ConsentGet(cfg *config.Config) CSRFHandler {
+	return func(ctx *macaron.Context, x csrf.CSRF) {
 		l := fromReq(ctx)
 		challenge := ctx.Query("consent_challenge")
 		if challenge == "" {
@@ -70,8 +70,8 @@ func ConsentGet(cfg *config.Config) func(ctx *macaron.Context, x csrf.CSRF, ldap
 	}
 }
 
-func ConsentPost(cfg *config.Config) func(ctx *macaron.Context, x csrf.CSRF, ldapcfg *ldap.Config) {
-	return func(ctx *macaron.Context, x csrf.CSRF, ldapcfg *ldap.Config) {
+func ConsentPost(cfg *config.Config) CSRFHandler {
+	return func(ctx *macaron.Context, x csrf.CSRF) {
 		challenge := ctx.Query("challenge")
 		clientId := ctx.Query("client_id")
 		subject := ctx.Query("subject")

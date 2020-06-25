@@ -13,7 +13,7 @@ import (
 	"github.com/stregouet/hydra-ldap/internal/ldap"
 )
 
-func LoginGet(cfg *config.Config) func(ctx *macaron.Context, x csrf.CSRF) {
+func LoginGet(cfg *config.Config) CSRFHandler {
 	return func(ctx *macaron.Context, x csrf.CSRF) {
 		l := fromReq(ctx)
 		challenge := ctx.Query("login_challenge")
@@ -63,8 +63,8 @@ func LoginGet(cfg *config.Config) func(ctx *macaron.Context, x csrf.CSRF) {
 	}
 }
 
-func LoginPost(cfg *config.Config) func(ctx *macaron.Context, x csrf.CSRF, ldapcfg *ldap.Config) {
-	return func(ctx *macaron.Context, x csrf.CSRF, ldapcfg *ldap.Config) {
+func LoginPost(cfg *config.Config) CSRFHandler {
+	return func(ctx *macaron.Context, x csrf.CSRF) {
 		l := fromReq(ctx)
 		challenge := ctx.Query("challenge")
 		username := ctx.Query("username")
@@ -85,7 +85,7 @@ func LoginPost(cfg *config.Config) func(ctx *macaron.Context, x csrf.CSRF, ldapc
 		ctx.Data["client_id"] = clientId
 		ctx.Data["client_name"] = clientName
 
-		err := ldapcfg.NewClientWithContext(ctx.Req.Context()).
+		err := cfg.Ldap.NewClientWithContext(ctx.Req.Context()).
 			WithAppId(clientId).
 			IsAuthorized(username, password)
 		switch err {

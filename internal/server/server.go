@@ -24,7 +24,6 @@ func Start(cfg *config.Config) {
 
 	setupMiddlewares(m)
 	setupRoutes(m, cfg)
-	m.Map(&cfg.Ldap)
 	m.Run()
 }
 
