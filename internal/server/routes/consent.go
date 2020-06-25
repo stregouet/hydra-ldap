@@ -12,11 +12,12 @@ import (
 	"github.com/stregouet/hydra-ldap/internal/config"
 	"github.com/stregouet/hydra-ldap/internal/hydra"
 	"github.com/stregouet/hydra-ldap/internal/ldap"
+	"github.com/stregouet/hydra-ldap/internal/logging"
 )
 
 func ConsentGet(cfg *config.Config) CSRFHandler {
 	return func(ctx *macaron.Context, x csrf.CSRF) {
-		l := fromReq(ctx)
+		l := logging.FromMacaron(ctx)
 		challenge := ctx.Query("consent_challenge")
 		if challenge == "" {
 			l.Info().Msg("missing consent challenge")
@@ -85,7 +86,7 @@ func ConsentPost(cfg *config.Config) CSRFHandler {
 }
 
 func accept(ctx *macaron.Context, cfg *config.Config, clientId, subject, challenge string, scopes []string) string {
-	l := fromReq(ctx)
+	l := logging.FromMacaron(ctx)
 	reqCtx := ctx.Req.Context()
 	claims, err := cfg.Ldap.NewClientWithContext(reqCtx).
 		WithAppId(clientId).

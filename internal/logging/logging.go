@@ -1,11 +1,13 @@
 package logging
 
 import (
+	"context"
 	"fmt"
 	"log/syslog"
 	"strings"
 
 	"github.com/rs/zerolog"
+	"gopkg.in/macaron.v1"
 )
 
 var (
@@ -93,6 +95,14 @@ func systemdLevelPrefix(i interface{}) string {
 		}
 	}
 	return l
+}
+
+func FromMacaron(ctx *macaron.Context) *zerolog.Logger {
+	return zerolog.Ctx(ctx.Req.Context())
+}
+
+func FromCtx(ctx context.Context) *zerolog.Logger {
+	return zerolog.Ctx(ctx)
 }
 
 func init() {

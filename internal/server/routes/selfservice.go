@@ -9,12 +9,13 @@ import (
 
 	"github.com/stregouet/hydra-ldap/internal/config"
 	hydraSess "github.com/stregouet/hydra-ldap/internal/hydra/session"
+	"github.com/stregouet/hydra-ldap/internal/logging"
 	"github.com/stregouet/hydra-ldap/internal/oidc"
 )
 
 func SelfService(cfg *config.Config) func(ctx *macaron.Context, sess session.Store, x csrf.CSRF) {
 	return func(ctx *macaron.Context, sess session.Store, x csrf.CSRF) {
-		l := fromReq(ctx)
+		l := logging.FromMacaron(ctx)
 		ctx.Data["Title"] = "login-sso"
 		user := sess.Get("user")
 		if user != nil {
@@ -36,7 +37,7 @@ func SelfService(cfg *config.Config) func(ctx *macaron.Context, sess session.Sto
 
 func SelfServiceLogin(cfg *config.Config) func(ctx *macaron.Context, sess session.Store) {
 	return func(ctx *macaron.Context, sess session.Store) {
-		l := fromReq(ctx)
+		l := logging.FromMacaron(ctx)
 		url, err := oidc.BeginAuthHandler(ctx.Query("state"), sess)
 		if err != nil {
 			l.Error().Err(err).Msg("cannot start oauth process")
@@ -49,7 +50,7 @@ func SelfServiceLogin(cfg *config.Config) func(ctx *macaron.Context, sess sessio
 
 func SelfServiceLogout(cfg *config.Config) func(ctx *macaron.Context, sess session.Store) {
 	return func(ctx *macaron.Context, sess session.Store) {
-		l := fromReq(ctx)
+		l := logging.FromMacaron(ctx)
 		user := sess.Get("user")
 		if user != nil {
 			subject := user.(string)
@@ -72,7 +73,7 @@ func SelfServiceLogout(cfg *config.Config) func(ctx *macaron.Context, sess sessi
 
 func SelfServiceOauth(cfg *config.Config) func(ctx *macaron.Context, sess session.Store) {
 	return func(ctx *macaron.Context, sess session.Store) {
-		l := fromReq(ctx)
+		l := logging.FromMacaron(ctx)
 		claims, err := oidc.CompleteUserAuth(ctx.Query("code"), ctx.Query("state"), sess)
 		if err != nil {
 			l.Error().Err(err).Msg("cannot complete auth user")
@@ -86,7 +87,7 @@ func SelfServiceOauth(cfg *config.Config) func(ctx *macaron.Context, sess sessio
 
 func SelfServiceRevoke(cfg *config.Config) func(ctx *macaron.Context, x csrf.CSRF, sess session.Store) {
 	return func(ctx *macaron.Context, x csrf.CSRF, sess session.Store) {
-		l := fromReq(ctx)
+		l := logging.FromMacaron(ctx)
 		ctx.Data["Title"] = "login-sso"
 		user := sess.Get("user")
 		if user != nil {

@@ -56,6 +56,7 @@ func FetchConsentSessions(ctx context.Context, cfg *hydra.Config, subject string
 }
 
 func RevokeApp(ctx context.Context, cfg *hydra.Config, subject, clientid string) error {
+	l := logging.FromCtx(ctx)
 	client := &hydra.HttpClient{cfg, ctx}
 
 	urlPath := fmt.Sprintf("oauth2/auth/sessions/consent?subject=%s&client=%s",
@@ -88,7 +89,11 @@ func RevokeApp(ctx context.Context, cfg *hydra.Config, subject, clientid string)
 	if err := dec.Decode(&jsonResp); err != nil {
 		return errors.Wrap(err, "while parsing of response body from hydra server")
 	}
-	logging.Error().Str("error", jsonResp.Error).Str("debug", jsonResp.Debug).Str("descr", jsonResp.ErrorDescription).Msg("hydra sent error")
+	l.Error().
+		Str("error", jsonResp.Error).
+		Str("debug", jsonResp.Debug).
+		Str("descr", jsonResp.ErrorDescription).
+		Msg("hydra sent error")
 	if jsonResp.Error != "" {
 		return errors.New(jsonResp.Error)
 	}
@@ -97,6 +102,7 @@ func RevokeApp(ctx context.Context, cfg *hydra.Config, subject, clientid string)
 }
 
 func Logout(ctx context.Context, cfg *hydra.Config, subject string) error {
+	l := logging.FromCtx(ctx)
 	client := &hydra.HttpClient{cfg, ctx}
 
 	urlPath := fmt.Sprintf("oauth2/auth/sessions/login?subject=%s", url.QueryEscape(subject))
@@ -128,7 +134,11 @@ func Logout(ctx context.Context, cfg *hydra.Config, subject string) error {
 	if err := dec.Decode(&jsonResp); err != nil {
 		return errors.Wrap(err, "while parsing of response body from hydra server")
 	}
-	logging.Error().Str("error", jsonResp.Error).Str("debug", jsonResp.Debug).Str("descr", jsonResp.ErrorDescription).Msg("hydra sent error")
+	l.Error().
+		Str("error", jsonResp.Error).
+		Str("debug", jsonResp.Debug).
+		Str("descr", jsonResp.ErrorDescription).
+		Msg("hydra sent error")
 	if jsonResp.Error != "" {
 		return errors.New(jsonResp.Error)
 	}

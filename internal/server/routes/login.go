@@ -11,11 +11,12 @@ import (
 	"github.com/stregouet/hydra-ldap/internal/config"
 	"github.com/stregouet/hydra-ldap/internal/hydra"
 	"github.com/stregouet/hydra-ldap/internal/ldap"
+	"github.com/stregouet/hydra-ldap/internal/logging"
 )
 
 func LoginGet(cfg *config.Config) CSRFHandler {
 	return func(ctx *macaron.Context, x csrf.CSRF) {
-		l := fromReq(ctx)
+		l := logging.FromMacaron(ctx)
 		challenge := ctx.Query("login_challenge")
 		if challenge == "" {
 			l.Info().Msg("missing login challenge")
@@ -65,7 +66,7 @@ func LoginGet(cfg *config.Config) CSRFHandler {
 
 func LoginPost(cfg *config.Config) CSRFHandler {
 	return func(ctx *macaron.Context, x csrf.CSRF) {
-		l := fromReq(ctx)
+		l := logging.FromMacaron(ctx)
 		challenge := ctx.Query("challenge")
 		username := ctx.Query("username")
 		password := ctx.Query("password")
