@@ -1,5 +1,9 @@
 package oidc
 
+import (
+	"github.com/stregouet/hydra-ldap/internal/types"
+)
+
 type Config struct {
 	ClientId     string
 	Secret       string
@@ -9,4 +13,8 @@ type Config struct {
 
 func (c *Config) Validate() error {
 	return nil
+}
+
+func (cfg *Config) GetDefaults() []types.Default {
+	return []types.Default{}
 }

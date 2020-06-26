@@ -1,7 +1,10 @@
 package ldap
 
 import (
+	"fmt"
 	"strings"
+
+	"github.com/stregouet/hydra-ldap/internal/types"
 )
 
 type Config struct {
@@ -14,6 +17,18 @@ type Config struct {
 	Adminpw string
 
 	Attrs []string
+}
+
+func (cfg *Config) GetDefaults() []types.Default {
+	return []types.Default{
+		types.Default{"tls", false},
+		types.Default{"attrs", []string{
+			"name:name",
+			"sn:family_name",
+			"givenName:given_name",
+			"mail:email",
+		}},
+	}
 }
 
 func (c *Config) attrsMap() map[string]string {
@@ -29,5 +44,11 @@ func (c *Config) attrsMap() map[string]string {
 }
 
 func (cfg *Config) Validate() error {
+	if cfg.Endpoint == "" {
+		return fmt.Errorf("empty ldap endpoint")
+	}
+	if cfg.Basedn == "" {
+		return fmt.Errorf("empty ldap basedn")
+	}
 	return nil
 }

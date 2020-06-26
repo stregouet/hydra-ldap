@@ -2,6 +2,8 @@ package logging
 
 import (
 	"github.com/rs/zerolog"
+
+	"github.com/stregouet/hydra-ldap/internal/types"
 )
 
 type Config struct {
@@ -21,4 +23,11 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 	return nil
+}
+
+func (cfg *Config) GetDefaults() []types.Default {
+	return []types.Default{
+		types.Default{"usesystemd", false},
+		types.Default{"level", "info"},
+	}
 }

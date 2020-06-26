@@ -23,7 +23,7 @@ func Start(cfg *config.Config) {
 
 	setupMiddlewares(m)
 	setupRoutes(m, cfg)
-	m.Run()
+	m.Run(cfg.Server.Host, cfg.Server.Port)
 }
 
 func setupMiddlewares(m *macaron.Macaron) {

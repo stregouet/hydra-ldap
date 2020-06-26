@@ -46,10 +46,14 @@ func Run(cfgFile string) {
 
 func initConfig(cfgFile string, c *config.Config) {
 	if cfgFile != "" {
-		fmt.Printf("set configfile %v\n", cfgFile)
 		viper.SetConfigFile(cfgFile)
 	}
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	for _, d := range c.GetDefaults() {
+		viper.SetDefault(d.Key, d.Value)
+	}
+
 	viper.AutomaticEnv() // read in environment variables that match
 	if err := viper.ReadInConfig(); err != nil {
 		fmt.Printf("Config file not found because `%s`\n", err)

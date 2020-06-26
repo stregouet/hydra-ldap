@@ -7,12 +7,27 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+
+	"github.com/stregouet/hydra-ldap/internal/types"
 )
 
 type Config struct {
 	Url         string
 	SessionTTL  time.Duration
 	ClaimScopes []string
+}
+
+func (cfg *Config) GetDefaults() []types.Default {
+	return []types.Default{
+		types.Default{"sessionttl", "24h"},
+		types.Default{"claimscopes", []string{
+			"name:profile",
+			"family_name:profile",
+			"given_name:profile",
+			"email:email",
+			"roles:roles",
+		}},
+	}
 }
 
 func (c *Config) ParsedUrl() *url.URL {
